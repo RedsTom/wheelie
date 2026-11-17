@@ -3,7 +3,7 @@
 //! Wheelie keeps its configuration separate from eframe's persistence folder so
 //! that the file can be edited by hand and survives UI changes.
 
-use crate::error::PlatformError;
+use super::error::PlatformError;
 use directories::ProjectDirs;
 use std::path::PathBuf;
 

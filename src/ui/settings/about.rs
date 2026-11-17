@@ -1,9 +1,9 @@
 //! About page.
 
+use crate::core::{CaptureMode, Language, PlatformInfo, REPOSITORY_URL, TextKey, VERSION, tr};
 use eframe::egui;
-use wheelie_core::{CaptureMode, Language, PlatformInfo, REPOSITORY_URL, TextKey, VERSION, tr};
 
-use crate::{theme, widgets};
+use crate::ui::{theme, widgets};
 
 pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
     ui.heading(tr(language, TextKey::AboutTitle));

@@ -11,8 +11,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 ## M0 — Foundations
 
 - [x] Initialize Git repository and ignore rules.
-- [x] Create workspace with `wheelie-core`, `wheelie-platform`, `wheelie-app` and
-  `wheelie-ui`.
+- [x] Create the single-crate module layout (`src/core`, `src/platform`,
+  `src/app`, `src/ui`).
 - [x] Add GPL-3.0 license.
 - [x] Add README, AGENTS.md and ROADMAP.md.
 - [x] Add three-OS GitHub Actions CI.

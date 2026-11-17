@@ -1,8 +1,8 @@
 //! Application layer for Wheelie.
 //!
-//! This crate orchestrates the domain and platform adapters. It must not depend
+//! This module orchestrates the domain and platform adapters. It must not depend
 //! on eframe or any graphical toolkit: views consume [`RuntimeHandle`] through
-//! `wheelie-ui`.
+//! the `ui` module.
 
 pub mod error;
 pub mod logging;

@@ -3,11 +3,11 @@
 mod about;
 mod general;
 
+use crate::app::{RuntimeHandle, RuntimeSnapshot};
+use crate::core::{Language, PlatformInfo, TextKey, tr};
 use eframe::egui;
-use wheelie_app::{RuntimeHandle, RuntimeSnapshot};
-use wheelie_core::{Language, PlatformInfo, TextKey, tr};
 
-use crate::widgets;
+use crate::ui::widgets;
 
 /// Settings sections shown in the left navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,7 +67,7 @@ pub fn navigation(ui: &mut egui::Ui, language: Language, selected: &mut Settings
     ui.label(tr(language, TextKey::Status));
     ui.label(
         egui::RichText::new(tr(language, TextKey::Milestone0Title))
-            .color(crate::theme::ACCENT)
+            .color(crate::ui::theme::ACCENT)
             .strong(),
     );
 }

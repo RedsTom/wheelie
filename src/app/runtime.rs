@@ -3,11 +3,11 @@
 //! M0 provides the lifecycle skeleton (start, pause, resume, stop). M2 wires
 //! global hotkeys, the action worker and configuration persistence into it.
 
-use crate::error::AppError;
+use super::error::AppError;
+use crate::core::PlatformInfo;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
-use wheelie_core::PlatformInfo;
 
 /// Global runtime state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -98,7 +98,7 @@ impl RuntimeHandle {
     /// Exposed through the application layer so `wheelie-ui` never depends on
     /// `wheelie-platform` directly.
     pub fn platform_info(&self) -> PlatformInfo {
-        wheelie_platform::info()
+        crate::platform::info()
     }
 }
 

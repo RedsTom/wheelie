@@ -1,10 +1,10 @@
 //! General settings page.
 
+use crate::app::{AppCommand, RuntimeHandle, RuntimeSnapshot, RuntimeState};
+use crate::core::{Language, TextKey, tr};
 use eframe::egui;
-use wheelie_app::{AppCommand, RuntimeHandle, RuntimeSnapshot, RuntimeState};
-use wheelie_core::{Language, TextKey, tr};
 
-use crate::{theme, widgets};
+use crate::ui::{theme, widgets};
 
 pub fn show(
     ui: &mut egui::Ui,

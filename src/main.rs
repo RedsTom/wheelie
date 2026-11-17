@@ -9,13 +9,15 @@ mod cli;
 
 use anyhow::Result;
 use clap::Parser;
+use wheelie::app::{Runtime, logging};
+use wheelie::ui;
 
 fn main() -> Result<()> {
     let _cli = cli::Cli::parse();
-    let _log_guard = wheelie_app::logging::init()?;
-    let mut runtime = wheelie_app::Runtime::new()?;
+    let _log_guard = logging::init()?;
+    let mut runtime = Runtime::new()?;
 
-    let result = wheelie_ui::run(runtime.handle());
+    let result = ui::run(runtime.handle());
     runtime.shutdown();
     result
 }

@@ -1,6 +1,6 @@
 //! Platform capability description.
 
-use wheelie_core::{CaptureMode, PlatformInfo};
+use crate::core::{CaptureMode, PlatformInfo};
 
 #[cfg(target_os = "windows")]
 const OS_NAME: &str = "Windows";

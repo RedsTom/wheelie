@@ -1,12 +1,12 @@
 //! `tracing` initialization to stderr and a daily log file.
 
-use crate::error::AppError;
+use super::error::AppError;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initializes logging. Keep the returned guard alive until shutdown.
 pub fn init() -> Result<WorkerGuard, AppError> {
-    let log_dir = wheelie_platform::log_dir()?;
+    let log_dir = crate::platform::log_dir()?;
     let file_appender = tracing_appender::rolling::daily(log_dir, "wheelie.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
 
@@ -24,8 +24,8 @@ pub fn init() -> Result<WorkerGuard, AppError> {
         .init();
 
     tracing::info!(
-        version = wheelie_core::VERSION,
-        os = wheelie_platform::info().os,
+        version = crate::core::VERSION,
+        os = crate::platform::info().os,
         "Wheelie started"
     );
 

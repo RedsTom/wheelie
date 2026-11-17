@@ -1,7 +1,7 @@
 //! Application-layer errors.
 
+use crate::platform::PlatformError;
 use thiserror::Error;
-use wheelie_platform::PlatformError;
 
 /// Error surfaced by the orchestration layer.
 #[derive(Debug, Error)]

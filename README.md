@@ -6,9 +6,9 @@ Windows Wheel itself. You assign the keys your keyboard software emits for knob
 left, knob right and knob press; Wheelie captures them exclusively and runs its own
 actions.
 
-> **Status: M0 foundations complete.** The workspace, CI, license, documentation
-> and application shell are in place. M1 (pure domain) is next; progress is tracked
-> in [`ROADMAP.md`](ROADMAP.md).
+> **Status: M0 foundations complete.** The single-crate module layout, CI, license,
+> documentation and application shell are in place. M1 (pure domain) is next;
+> progress is tracked in [`ROADMAP.md`](ROADMAP.md).
 
 Wheelie is not affiliated with Microsoft.
 
@@ -46,11 +46,12 @@ Wheelie is not affiliated with Microsoft.
 ## Architecture
 
 ```
-src/                      composition root
-crates/wheelie-core/      pure domain and translations
-crates/wheelie-platform/  operating-system adapters
-crates/wheelie-app/       runtime orchestration
-crates/wheelie-ui/        eframe views and widgets
+src/main.rs       composition root
+src/lib.rs        module root
+src/core/         pure domain and translations
+src/platform/     operating-system adapters
+src/app/          runtime orchestration
+src/ui/           eframe views and widgets
 ```
 
 Dependency direction: `core → platform → app → ui`. The root binary only wires
@@ -60,8 +61,8 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 
 ```bash
 cargo run
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test
+cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 

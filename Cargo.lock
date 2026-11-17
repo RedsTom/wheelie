@@ -3806,49 +3806,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "wheelie-app",
- "wheelie-ui",
-]
-
-[[package]]
-name = "wheelie-app"
-version = "0.1.0"
-dependencies = [
  "crossbeam-channel",
- "thiserror 2.0.21",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "wheelie-core",
- "wheelie-platform",
-]
-
-[[package]]
-name = "wheelie-core"
-version = "0.1.0"
-dependencies = [
+ "directories",
+ "eframe",
  "serde",
  "thiserror 2.0.21",
  "toml",
-]
-
-[[package]]
-name = "wheelie-platform"
-version = "0.1.0"
-dependencies = [
- "directories",
- "thiserror 2.0.21",
- "wheelie-core",
-]
-
-[[package]]
-name = "wheelie-ui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "eframe",
- "wheelie-app",
- "wheelie-core",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]

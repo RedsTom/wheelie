@@ -1,30 +1,5 @@
 [package]
 name = "wheelie"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
-homepage.workspace = true
-description = "Cross-platform knob utility with a Windows Wheel-inspired radial UI"
-
-[dependencies]
-anyhow.workspace = true
-clap.workspace = true
-wheelie-app.workspace = true
-wheelie-ui.workspace = true
-
-[workspace]
-members = [
-    "crates/wheelie-core",
-    "crates/wheelie-platform",
-    "crates/wheelie-app",
-    "crates/wheelie-ui",
-]
-resolver = "3"
-
-[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
@@ -32,8 +7,9 @@ license = "GPL-3.0-only"
 authors = ["RedsTom"]
 repository = "https://github.com/RedsTom/wheelie"
 homepage = "https://github.com/RedsTom/wheelie"
+description = "Cross-platform knob utility with a Windows Wheel-inspired radial UI"
 
-[workspace.dependencies]
+[dependencies]
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
 crossbeam-channel = "0.5"
@@ -45,7 +21,3 @@ toml = "0.8"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-wheelie-app = { path = "crates/wheelie-app" }
-wheelie-core = { path = "crates/wheelie-core" }
-wheelie-platform = { path = "crates/wheelie-platform" }
-wheelie-ui = { path = "crates/wheelie-ui" }

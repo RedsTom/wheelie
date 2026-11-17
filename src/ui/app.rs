@@ -3,12 +3,12 @@
 //! This module owns the `eframe::App` implementation. Business state lives in
 //! `wheelie-app` and is observed through `RuntimeHandle`.
 
+use crate::app::{AppEvent, RuntimeHandle, RuntimeSnapshot};
+use crate::core::{APP_ID, APP_NAME, Language, PlatformInfo, TextKey, VERSION, tr};
 use eframe::egui;
 use std::time::Duration;
-use wheelie_app::{AppEvent, RuntimeHandle, RuntimeSnapshot};
-use wheelie_core::{APP_ID, APP_NAME, Language, PlatformInfo, TextKey, VERSION, tr};
 
-use crate::{ThemeMode, settings, theme};
+use crate::ui::{ThemeMode, settings, theme};
 
 /// Runs the native eframe loop.
 pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {

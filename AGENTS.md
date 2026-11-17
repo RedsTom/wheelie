@@ -12,40 +12,40 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0 complete: workspace, layered crates, docs and CI are green on Windows, macOS
+M0 complete: single-crate module layout, docs and CI are green on Windows, macOS
 and Ubuntu. M1 (pure domain) is next. `ROADMAP.md` is the authoritative checklist;
 update it when a milestone item lands.
 
 ## Architecture
 
-Strict dependency direction:
+One package, layered modules with strict dependency direction:
 
 ```
-src/                      composition root only (CLI, logging, runtime, eframe run)
-crates/wheelie-core/      pure domain: config, keys, actions, macros, gestures,
-                          profiles, i18n, wheel geometry
-crates/wheelie-platform/  OS adapters: hotkeys, input simulation, autostart,
-                          launch, instance, paths
-crates/wheelie-app/       orchestration: config store, runtime, action worker,
-                          tray commands
-crates/wheelie-ui/        eframe only: settings pages, radial overlay, theme, widgets
+src/main.rs       composition root (CLI, logging, runtime, eframe run)
+src/lib.rs        module root
+src/core/         pure domain: config, keys, actions, macros, gestures,
+                  profiles, i18n, wheel geometry
+src/platform/     OS adapters: hotkeys, input simulation, autostart, launch,
+                  instance, paths
+src/app/          orchestration: config store, runtime, action worker, tray commands
+src/ui/           eframe only: settings pages, radial overlay, theme, widgets
 ```
 
 Rules:
 
 - `core` has no UI, OS, filesystem or thread dependencies.
-- `platform` is the only crate allowed to call OS APIs.
+- `platform` is the only module allowed to call OS APIs.
 - `app` contains business orchestration and no eframe.
 - `ui` contains no business rules and no OS calls.
-- the root binary only wires dependencies; no layout code.
+- `src/main.rs` only wires modules; no layout code.
 
 ## Commands
 
 ```bash
 cargo run
-cargo test --workspace
-cargo test -p wheelie-core i18n
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test
+cargo test core::i18n
+cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
