@@ -12,8 +12,9 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0 foundations. The app opens a settings shell and the runtime state channel works.
-`ROADMAP.md` is the authoritative checklist; update it when a milestone item lands.
+M0 complete: workspace, layered crates, docs and CI are green on Windows, macOS
+and Ubuntu. M1 (pure domain) is next. `ROADMAP.md` is the authoritative checklist;
+update it when a milestone item lands.
 
 ## Architecture
 

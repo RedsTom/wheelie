@@ -6,9 +6,9 @@ Windows Wheel itself. You assign the keys your keyboard software emits for knob
 left, knob right and knob press; Wheelie captures them exclusively and runs its own
 actions.
 
-> **Status: M0 foundations.** The workspace, CI, license, documentation and
-> application shell are in place. The domain model, exclusive hotkeys and radial
-> wheel are tracked in [`ROADMAP.md`](ROADMAP.md).
+> **Status: M0 foundations complete.** The workspace, CI, license, documentation
+> and application shell are in place. M1 (pure domain) is next; progress is tracked
+> in [`ROADMAP.md`](ROADMAP.md).
 
 Wheelie is not affiliated with Microsoft.
 
