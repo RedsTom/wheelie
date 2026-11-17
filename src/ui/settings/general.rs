@@ -11,6 +11,7 @@ pub fn show(
     preferences: &mut UiPreferences,
     runtime: &RuntimeHandle,
     snapshot: &RuntimeSnapshot,
+    logo: &egui::TextureHandle,
 ) {
     let language = preferences.language;
     widgets::page_header(
@@ -19,7 +20,7 @@ pub fn show(
         tr(language, TextKey::GeneralSubtitle),
     );
 
-    runtime_card(ui, language, runtime, snapshot);
+    runtime_card(ui, language, runtime, snapshot, logo);
     ui.add_space(14.0);
     ui.columns(2, |columns| {
         preferences_card(&mut columns[0], preferences);
@@ -32,10 +33,11 @@ fn runtime_card(
     language: Language,
     runtime: &RuntimeHandle,
     snapshot: &RuntimeSnapshot,
+    logo: &egui::TextureHandle,
 ) {
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::wheel_logo(ui, 44.0, theme::ACCENT);
+            widgets::logo_image(ui, logo, 44.0);
             ui.add_space(4.0);
             ui.vertical(|ui| {
                 let title = match snapshot.state {

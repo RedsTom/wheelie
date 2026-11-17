@@ -4,7 +4,12 @@ use crate::core::{APP_NAME, Language, PlatformInfo, TextKey, VERSION, tr};
 use crate::ui::{theme, widgets};
 use eframe::egui;
 
-pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
+pub fn show(
+    ui: &mut egui::Ui,
+    language: Language,
+    platform: PlatformInfo,
+    logo: &egui::TextureHandle,
+) {
     widgets::page_header(
         ui,
         tr(language, TextKey::AboutTitle),
@@ -13,7 +18,7 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
 
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::wheel_logo(ui, 56.0, theme::ACCENT);
+            widgets::logo_image(ui, logo, 56.0);
             ui.add_space(6.0);
             ui.vertical(|ui| {
                 ui.label(

@@ -4,6 +4,7 @@
 //! `crate::app` and is observed through `RuntimeHandle`.
 
 use crate::app::{AppEvent, RuntimeHandle, RuntimeSnapshot};
+use crate::assets;
 use crate::core::{APP_ID, APP_NAME, PlatformInfo, TextKey, VERSION, tr};
 use crate::ui::settings::{self, SettingsTab, UiPreferences};
 use crate::ui::{theme, widgets};
@@ -18,6 +19,7 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
             .with_inner_size([1180.0, 760.0])
             .with_min_inner_size([960.0, 620.0])
             .with_app_id(APP_ID)
+            .with_icon(assets::window_icon())
             .with_title(APP_NAME),
         ..Default::default()
     };
@@ -38,6 +40,7 @@ struct WheelieApp {
     tab: SettingsTab,
     snapshot: RuntimeSnapshot,
     platform: PlatformInfo,
+    logo: egui::TextureHandle,
 }
 
 impl WheelieApp {
@@ -48,12 +51,14 @@ impl WheelieApp {
 
         let snapshot = runtime.snapshot();
         let platform = runtime.platform_info();
+        let logo = assets::load_logo_texture(&cc.egui_ctx);
         Self {
             runtime,
             preferences,
             tab: SettingsTab::default(),
             snapshot,
             platform,
+            logo,
         }
     }
 
@@ -70,7 +75,7 @@ impl WheelieApp {
         let language = self.preferences.language;
 
         ui.horizontal(|ui| {
-            widgets::wheel_logo(ui, 24.0, theme::ACCENT);
+            widgets::logo_image(ui, &self.logo, 30.0);
             ui.add_space(2.0);
             ui.vertical(|ui| {
                 ui.label(
@@ -173,6 +178,7 @@ impl eframe::App for WheelieApp {
                             &self.runtime,
                             &self.snapshot,
                             self.platform,
+                            &self.logo,
                         );
                     });
             });

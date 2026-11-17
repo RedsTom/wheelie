@@ -91,9 +91,10 @@ pub fn page(
     runtime: &RuntimeHandle,
     snapshot: &RuntimeSnapshot,
     platform: PlatformInfo,
+    logo: &egui::TextureHandle,
 ) {
     match tab {
-        SettingsTab::General => general::show(ui, preferences, runtime, snapshot),
+        SettingsTab::General => general::show(ui, preferences, runtime, snapshot, logo),
         SettingsTab::Devices => placeholder(
             ui,
             preferences.language,
@@ -101,6 +102,7 @@ pub fn page(
             TextKey::DevicesSubtitle,
             TextKey::EmptyDevicesTitle,
             TextKey::EmptyDevicesBody,
+            logo,
         ),
         SettingsTab::Actions => placeholder(
             ui,
@@ -109,6 +111,7 @@ pub fn page(
             TextKey::ActionsSubtitle,
             TextKey::EmptyActionsTitle,
             TextKey::EmptyActionsBody,
+            logo,
         ),
         SettingsTab::Macros => placeholder(
             ui,
@@ -117,8 +120,9 @@ pub fn page(
             TextKey::MacrosSubtitle,
             TextKey::EmptyMacrosTitle,
             TextKey::EmptyMacrosBody,
+            logo,
         ),
-        SettingsTab::About => about::show(ui, preferences.language, platform),
+        SettingsTab::About => about::show(ui, preferences.language, platform, logo),
     }
 }
 
@@ -129,6 +133,7 @@ fn placeholder(
     subtitle: TextKey,
     empty_title: TextKey,
     empty_body: TextKey,
+    logo: &egui::TextureHandle,
 ) {
     widgets::page_header(ui, tr(language, title), tr(language, subtitle));
     widgets::card(ui, |ui| {
@@ -138,6 +143,7 @@ fn placeholder(
             tr(language, empty_body),
             tr(language, TextKey::ComingSoonBadge),
             theme::ACCENT,
+            logo,
         );
     });
 }

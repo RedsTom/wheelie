@@ -24,6 +24,7 @@ One package, layered modules with strict dependency direction:
 ```
 src/main.rs       composition root (CLI, logging, runtime, eframe run)
 src/lib.rs        module root
+src/assets.rs     embedded logo and icon loading
 src/core/         pure domain: config, keys, actions, macros, gestures,
                   profiles, i18n, wheel geometry
 src/platform/     OS adapters: hotkeys, input simulation, autostart, launch,
@@ -31,6 +32,11 @@ src/platform/     OS adapters: hotkeys, input simulation, autostart, launch,
 src/app/          orchestration: config store, runtime, action worker, tray commands
 src/ui/           eframe only: settings pages, radial overlay, theme, widgets
 ```
+
+The brand mark lives in `assets/logo/` and is the single source of truth: use
+`logo-4x.png` for in-app textures, `logo-2x.png` for window and tray icons, and
+`logo.svg` for documentation. Never redraw the mark in code. The accent color
+`#4B8BFF` in `src/ui/theme.rs` must stay in sync with the logo.
 
 Rules:
 

@@ -13,6 +13,7 @@
 //! `main.rs` only composes these modules.
 
 pub mod app;
+pub mod assets;
 pub mod core;
 pub mod platform;
 pub mod ui;

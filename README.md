@@ -1,5 +1,7 @@
 # Wheelie
 
+<img src="assets/logo/logo-2x.png" alt="Wheelie logo" width="96">
+
 Cross-platform knob utility written in Rust. Wheelie recreates the **UI/UX of the
 Windows Wheel** — a radial menu driven by a keyboard knob — without emulating the
 Windows Wheel itself. You assign the keys your keyboard software emits for knob

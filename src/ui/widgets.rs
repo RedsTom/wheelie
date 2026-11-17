@@ -135,10 +135,11 @@ pub fn empty_state(
     description: &str,
     badge: &str,
     badge_color: Color32,
+    logo: &egui::TextureHandle,
 ) {
     ui.add_space(18.0);
     ui.vertical_centered(|ui| {
-        wheel_logo(ui, 72.0, theme::accent(ui));
+        logo_image(ui, logo, 76.0);
         ui.add_space(12.0);
         ui.label(
             RichText::new(title)
@@ -157,27 +158,9 @@ pub fn empty_state(
     ui.add_space(18.0);
 }
 
-/// Draws a simple wheel mark without external icon fonts.
-pub fn wheel_logo(ui: &mut egui::Ui, diameter: f32, color: Color32) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::hover());
-    let center = rect.center();
-    let painter = ui.painter();
-    let radius = diameter * 0.40;
-
-    painter.circle_stroke(center, radius, Stroke::new(diameter * 0.045, color));
-    painter.circle_filled(center, diameter * 0.075, color);
-
-    for index in 0..4 {
-        let angle = index as f32 * std::f32::consts::TAU / 4.0;
-        let direction = Vec2::new(angle.cos(), angle.sin());
-        painter.line_segment(
-            [
-                center + direction * diameter * 0.14,
-                center + direction * diameter * 0.32,
-            ],
-            Stroke::new(diameter * 0.032, color),
-        );
-    }
+/// Displays the embedded logo at a fixed square size.
+pub fn logo_image(ui: &mut egui::Ui, texture: &egui::TextureHandle, size: f32) {
+    ui.add(egui::Image::new(texture).fit_to_exact_size(Vec2::splat(size)));
 }
 
 /// Numbered roadmap row.
