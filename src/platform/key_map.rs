@@ -144,8 +144,13 @@ pub fn to_enigo_key(key: KeyCode) -> Option<EnigoKey> {
 }
 
 fn limited_function_key(key: KeyCode) -> Option<EnigoKey> {
-    limited_on_macos!(
-        None,
+    #[cfg(target_os = "macos")]
+    {
+        let _ = key;
+        None
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
         match key {
             KeyCode::F21 => Some(EnigoKey::F21),
             KeyCode::F22 => Some(EnigoKey::F22),
@@ -153,7 +158,7 @@ fn limited_function_key(key: KeyCode) -> Option<EnigoKey> {
             KeyCode::F24 => Some(EnigoKey::F24),
             _ => None,
         }
-    )
+    }
 }
 
 /// Maps domain modifiers to global-hotkey modifiers.
