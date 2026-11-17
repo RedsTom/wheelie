@@ -1,0 +1,14 @@
+[package]
+name = "wheelie-platform"
+description = "Operating-system adapters for Wheelie"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+directories.workspace = true
+thiserror.workspace = true
+wheelie-core.workspace = true

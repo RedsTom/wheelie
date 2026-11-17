@@ -1,0 +1,23 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Build and packaging
+/dist/
+/release/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs and local configuration
+*.log
+/logs/
+config.local.toml
+
+# Environment
+.env
+.env.*
