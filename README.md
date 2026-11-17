@@ -7,8 +7,8 @@ left, knob right and knob press; Wheelie captures them exclusively and runs its 
 actions.
 
 > **Status: M0 foundations complete.** The single-crate module layout, CI, license,
-> documentation and application shell are in place. M1 (pure domain) is next;
-> progress is tracked in [`ROADMAP.md`](ROADMAP.md).
+> documentation and a Fluent-inspired settings shell are in place. M1 (pure domain)
+> is next; progress is tracked in [`ROADMAP.md`](ROADMAP.md).
 
 Wheelie is not affiliated with Microsoft.
 
@@ -41,6 +41,7 @@ Wheelie is not affiliated with Microsoft.
 - `enigo` for cross-platform input simulation.
 - `tray-icon` for the system tray.
 - `serde` + `toml` for configuration.
+- Inter font (OFL-1.1), bundled in `assets/fonts`.
 - No Tauri, WebView, async runtime or kernel driver.
 
 ## Architecture

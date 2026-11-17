@@ -1,4 +1,7 @@
 //! Supported languages and the translation table.
+//!
+//! Only user-facing prose lives here. Never expose milestone names, module
+//! names, architecture terms or other developer vocabulary in the UI.
 
 use serde::{Deserialize, Serialize};
 
@@ -53,56 +56,64 @@ impl std::str::FromStr for Language {
 }
 
 /// Stable keys for every translated string.
-///
-/// Code must never contain user-facing prose directly: add a key here and a
-/// French/English row in [`TRANSLATIONS`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextKey {
     AppTagline,
-    Navigation,
+    Workspace,
     TabGeneral,
     TabDevices,
     TabActions,
     TabMacros,
     TabAbout,
-    Status,
+    GeneralSubtitle,
+    DevicesSubtitle,
+    ActionsSubtitle,
+    MacrosSubtitle,
     StateStarting,
     StateRunning,
     StatePaused,
     StateStopped,
-    CaptureActive,
-    CaptureInactive,
-    RuntimeCardTitle,
     PauseAction,
     ResumeAction,
-    MilestoneCardTitle,
-    Milestone0Title,
-    Milestone0Body,
-    NextSteps,
-    Milestone1,
-    Milestone2,
-    Milestone3,
-    PlatformCardTitle,
-    CaptureModeExclusive,
-    CaptureModePermissioned,
-    CaptureModeX11,
-    CaptureModeUnsupported,
-    PlatformLimitedWarning,
+    RuntimeReadyTitle,
+    RuntimeReadyBody,
+    RuntimePausedTitle,
+    RuntimePausedBody,
+    RuntimeStoppedTitle,
+    RuntimeStoppedBody,
+    PreferencesTitle,
+    PreferencesBody,
+    LanguageDescription,
+    ThemeDescription,
+    GettingStartedTitle,
+    GettingStartedSubtitle,
+    StepConfigureTitle,
+    StepConfigureBody,
+    StepAssignTitle,
+    StepAssignBody,
+    StepOpenTitle,
+    StepOpenBody,
+    EmptyDevicesTitle,
+    EmptyDevicesBody,
+    EmptyActionsTitle,
+    EmptyActionsBody,
+    EmptyMacrosTitle,
+    EmptyMacrosBody,
+    ComingSoonBadge,
+    ActiveProfileLabel,
+    NoProfileLabel,
     AboutTitle,
     AboutBody,
+    AboutSubtitle,
+    FreeSoftware,
     VersionLabel,
     LicenseLabel,
-    RepositoryLabel,
-    ArchitectureLabel,
-    ArchitectureBody,
+    PlatformCardTitle,
+    PlatformLimitedWarning,
     ThemeLabel,
     LanguageLabel,
     DarkTheme,
     LightTheme,
-    PlaceholderDevices,
-    PlaceholderActions,
-    PlaceholderMacros,
-    PlannedInMilestone,
     LastErrorLabel,
 }
 
@@ -110,50 +121,61 @@ impl TextKey {
     /// Every key, used by completeness tests.
     pub const ALL: &'static [Self] = &[
         Self::AppTagline,
-        Self::Navigation,
+        Self::Workspace,
         Self::TabGeneral,
         Self::TabDevices,
         Self::TabActions,
         Self::TabMacros,
         Self::TabAbout,
-        Self::Status,
+        Self::GeneralSubtitle,
+        Self::DevicesSubtitle,
+        Self::ActionsSubtitle,
+        Self::MacrosSubtitle,
         Self::StateStarting,
         Self::StateRunning,
         Self::StatePaused,
         Self::StateStopped,
-        Self::CaptureActive,
-        Self::CaptureInactive,
-        Self::RuntimeCardTitle,
         Self::PauseAction,
         Self::ResumeAction,
-        Self::MilestoneCardTitle,
-        Self::Milestone0Title,
-        Self::Milestone0Body,
-        Self::NextSteps,
-        Self::Milestone1,
-        Self::Milestone2,
-        Self::Milestone3,
-        Self::PlatformCardTitle,
-        Self::CaptureModeExclusive,
-        Self::CaptureModePermissioned,
-        Self::CaptureModeX11,
-        Self::CaptureModeUnsupported,
-        Self::PlatformLimitedWarning,
+        Self::RuntimeReadyTitle,
+        Self::RuntimeReadyBody,
+        Self::RuntimePausedTitle,
+        Self::RuntimePausedBody,
+        Self::RuntimeStoppedTitle,
+        Self::RuntimeStoppedBody,
+        Self::PreferencesTitle,
+        Self::PreferencesBody,
+        Self::LanguageDescription,
+        Self::ThemeDescription,
+        Self::GettingStartedTitle,
+        Self::GettingStartedSubtitle,
+        Self::StepConfigureTitle,
+        Self::StepConfigureBody,
+        Self::StepAssignTitle,
+        Self::StepAssignBody,
+        Self::StepOpenTitle,
+        Self::StepOpenBody,
+        Self::EmptyDevicesTitle,
+        Self::EmptyDevicesBody,
+        Self::EmptyActionsTitle,
+        Self::EmptyActionsBody,
+        Self::EmptyMacrosTitle,
+        Self::EmptyMacrosBody,
+        Self::ComingSoonBadge,
+        Self::ActiveProfileLabel,
+        Self::NoProfileLabel,
         Self::AboutTitle,
         Self::AboutBody,
+        Self::AboutSubtitle,
+        Self::FreeSoftware,
         Self::VersionLabel,
         Self::LicenseLabel,
-        Self::RepositoryLabel,
-        Self::ArchitectureLabel,
-        Self::ArchitectureBody,
+        Self::PlatformCardTitle,
+        Self::PlatformLimitedWarning,
         Self::ThemeLabel,
         Self::LanguageLabel,
         Self::DarkTheme,
         Self::LightTheme,
-        Self::PlaceholderDevices,
-        Self::PlaceholderActions,
-        Self::PlaceholderMacros,
-        Self::PlannedInMilestone,
         Self::LastErrorLabel,
     ];
 }
@@ -173,9 +195,9 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "The wheel at your fingertips",
     },
     Translation {
-        key: TextKey::Navigation,
-        fr: "Navigation",
-        en: "Navigation",
+        key: TextKey::Workspace,
+        fr: "Paramètres",
+        en: "Settings",
     },
     Translation {
         key: TextKey::TabGeneral,
@@ -203,9 +225,24 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "About",
     },
     Translation {
-        key: TextKey::Status,
-        fr: "État",
-        en: "Status",
+        key: TextKey::GeneralSubtitle,
+        fr: "État de Wheelie, apparence et langue.",
+        en: "Wheelie status, appearance and language.",
+    },
+    Translation {
+        key: TextKey::DevicesSubtitle,
+        fr: "Associez les touches de votre knob.",
+        en: "Map the keys of your keyboard knob.",
+    },
+    Translation {
+        key: TextKey::ActionsSubtitle,
+        fr: "Choisissez ce que fait chaque geste du knob.",
+        en: "Choose what each knob gesture does.",
+    },
+    Translation {
+        key: TextKey::MacrosSubtitle,
+        fr: "Séquences réutilisables de touches, texte et délais.",
+        en: "Reusable sequences of keys, text and delays.",
     },
     Translation {
         key: TextKey::StateStarting,
@@ -214,8 +251,8 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::StateRunning,
-        fr: "Actif",
-        en: "Running",
+        fr: "Prêt",
+        en: "Ready",
     },
     Translation {
         key: TextKey::StatePaused,
@@ -228,21 +265,6 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "Stopped",
     },
     Translation {
-        key: TextKey::CaptureActive,
-        fr: "Capture active",
-        en: "Capture active",
-    },
-    Translation {
-        key: TextKey::CaptureInactive,
-        fr: "Capture inactive",
-        en: "Capture inactive",
-    },
-    Translation {
-        key: TextKey::RuntimeCardTitle,
-        fr: "Runtime",
-        en: "Runtime",
-    },
-    Translation {
         key: TextKey::PauseAction,
         fr: "Mettre en pause",
         en: "Pause",
@@ -253,69 +275,139 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "Resume",
     },
     Translation {
-        key: TextKey::MilestoneCardTitle,
-        fr: "Jalon en cours",
-        en: "Current milestone",
+        key: TextKey::RuntimeReadyTitle,
+        fr: "Wheelie est prêt",
+        en: "Wheelie is ready",
     },
     Translation {
-        key: TextKey::Milestone0Title,
-        fr: "M0 — Fondations",
-        en: "M0 — Foundations",
+        key: TextKey::RuntimeReadyBody,
+        fr: "Configurez un knob pour commencer à utiliser la roue.",
+        en: "Configure a knob to start using the wheel.",
     },
     Translation {
-        key: TextKey::Milestone0Body,
-        fr: "Workspace, CI, licence, documentation et squelette applicatif. Le cœur, les hotkeys et la roue arrivent aux jalons suivants.",
-        en: "Workspace, CI, license, documentation and application skeleton. The core, hotkeys and wheel arrive in the next milestones.",
+        key: TextKey::RuntimePausedTitle,
+        fr: "Wheelie est en pause",
+        en: "Wheelie is paused",
     },
     Translation {
-        key: TextKey::NextSteps,
-        fr: "Prochaines étapes",
-        en: "Next steps",
+        key: TextKey::RuntimePausedBody,
+        fr: "Wheelie ne réagit pas au knob pendant la pause.",
+        en: "Wheelie does not respond to the knob while paused.",
     },
     Translation {
-        key: TextKey::Milestone1,
-        fr: "M1 · Domaine pur et tests",
-        en: "M1 · Pure domain and tests",
+        key: TextKey::RuntimeStoppedTitle,
+        fr: "Wheelie est arrêté",
+        en: "Wheelie is stopped",
     },
     Translation {
-        key: TextKey::Milestone2,
-        fr: "M2 · Hotkeys et simulation d'entrées",
-        en: "M2 · Hotkeys and input simulation",
+        key: TextKey::RuntimeStoppedBody,
+        fr: "Redémarrez Wheelie pour qu'il réponde à nouveau.",
+        en: "Restart Wheelie so it can respond again.",
     },
     Translation {
-        key: TextKey::Milestone3,
-        fr: "M3 · Réglages, roue radiale et tray",
-        en: "M3 · Settings, radial wheel and tray",
+        key: TextKey::PreferencesTitle,
+        fr: "Préférences",
+        en: "Preferences",
     },
     Translation {
-        key: TextKey::PlatformCardTitle,
-        fr: "Plateforme détectée",
-        en: "Detected platform",
+        key: TextKey::PreferencesBody,
+        fr: "Choisissez l'apparence et la langue de Wheelie.",
+        en: "Choose how Wheelie looks and speaks.",
     },
     Translation {
-        key: TextKey::CaptureModeExclusive,
-        fr: "hotkeys globaux exclusifs",
-        en: "exclusive global hotkeys",
+        key: TextKey::LanguageDescription,
+        fr: "Langue utilisée dans toute l'interface.",
+        en: "Language used across the interface.",
     },
     Translation {
-        key: TextKey::CaptureModePermissioned,
-        fr: "hotkeys globaux (permissions système)",
-        en: "global hotkeys (system permissions)",
+        key: TextKey::ThemeDescription,
+        fr: "Apparence sombre ou claire.",
+        en: "Dark or light appearance.",
     },
     Translation {
-        key: TextKey::CaptureModeX11,
-        fr: "X11 ; Wayland best-effort",
-        en: "X11; Wayland best effort",
+        key: TextKey::GettingStartedTitle,
+        fr: "Pour démarrer",
+        en: "Getting started",
     },
     Translation {
-        key: TextKey::CaptureModeUnsupported,
-        fr: "non supporté",
-        en: "unsupported",
+        key: TextKey::GettingStartedSubtitle,
+        fr: "Trois étapes pour utiliser votre knob.",
+        en: "Three steps to use your knob.",
     },
     Translation {
-        key: TextKey::PlatformLimitedWarning,
-        fr: "La capture globale peut être limitée par le compositeur ou les permissions système.",
-        en: "Global capture may be limited by the compositor or system permissions.",
+        key: TextKey::StepConfigureTitle,
+        fr: "Configurez votre knob",
+        en: "Configure your knob",
+    },
+    Translation {
+        key: TextKey::StepConfigureBody,
+        fr: "Choisissez les touches que votre logiciel clavier associe à la gauche, la droite et la pression.",
+        en: "Choose the keys your keyboard software assigns to left, right and press.",
+    },
+    Translation {
+        key: TextKey::StepAssignTitle,
+        fr: "Assignez vos actions",
+        en: "Assign your actions",
+    },
+    Translation {
+        key: TextKey::StepAssignBody,
+        fr: "Volume, défilement, macro, raccourci, souris ou lancement d'application.",
+        en: "Volume, scroll, macro, shortcut, mouse or app launch.",
+    },
+    Translation {
+        key: TextKey::StepOpenTitle,
+        fr: "Ouvrez la roue",
+        en: "Open the wheel",
+    },
+    Translation {
+        key: TextKey::StepOpenBody,
+        fr: "Double-cliquez sur le knob pour afficher la roue et choisir une action.",
+        en: "Double-click the knob to open the wheel and choose an action.",
+    },
+    Translation {
+        key: TextKey::EmptyDevicesTitle,
+        fr: "Aucun knob configuré",
+        en: "No knob configured",
+    },
+    Translation {
+        key: TextKey::EmptyDevicesBody,
+        fr: "Choisissez les touches de votre knob pour la gauche, la droite et la pression. Cette section arrive bientôt.",
+        en: "Choose the keys of your knob for left, right and press. This section is coming soon.",
+    },
+    Translation {
+        key: TextKey::EmptyActionsTitle,
+        fr: "Aucune action",
+        en: "No actions yet",
+    },
+    Translation {
+        key: TextKey::EmptyActionsBody,
+        fr: "Choisissez une action de volume, de défilement, de macro, de raccourci, de souris ou de lancement pour chaque geste.",
+        en: "Choose a volume, scroll, macro, shortcut, mouse or launch action for each gesture.",
+    },
+    Translation {
+        key: TextKey::EmptyMacrosTitle,
+        fr: "Aucune macro",
+        en: "No macros yet",
+    },
+    Translation {
+        key: TextKey::EmptyMacrosBody,
+        fr: "Créez des séquences de touches, de texte et de délais à rejouer depuis la roue. Cette section arrive bientôt.",
+        en: "Create sequences of keys, text and delays to replay from the wheel. This section is coming soon.",
+    },
+    Translation {
+        key: TextKey::ComingSoonBadge,
+        fr: "Bientôt",
+        en: "Coming soon",
+    },
+    Translation {
+        key: TextKey::ActiveProfileLabel,
+        fr: "Profil actif",
+        en: "Active profile",
+    },
+    Translation {
+        key: TextKey::NoProfileLabel,
+        fr: "Aucun profil sélectionné",
+        en: "No profile selected",
     },
     Translation {
         key: TextKey::AboutTitle,
@@ -324,8 +416,18 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::AboutBody,
-        fr: "Wheelie reproduit l'UI/UX de la roue Windows avec ses propres actions. Ce n'est pas un émulateur de la Windows Wheel.",
-        en: "Wheelie recreates the Windows Wheel UI/UX with its own actions. It is not a Windows Wheel emulator.",
+        fr: "Wheelie reproduit l'expérience de la roue Windows avec ses propres actions. Ce n'est pas un émulateur de la Windows Wheel.",
+        en: "Wheelie recreates the Windows Wheel experience with its own actions. It is not a Windows Wheel emulator.",
+    },
+    Translation {
+        key: TextKey::AboutSubtitle,
+        fr: "Version, licence et informations système.",
+        en: "Version, license and system information.",
+    },
+    Translation {
+        key: TextKey::FreeSoftware,
+        fr: "Logiciel libre sous GPL-3.0.",
+        en: "Free software under GPL-3.0.",
     },
     Translation {
         key: TextKey::VersionLabel,
@@ -338,19 +440,14 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "License",
     },
     Translation {
-        key: TextKey::RepositoryLabel,
-        fr: "Dépôt",
-        en: "Repository",
+        key: TextKey::PlatformCardTitle,
+        fr: "Système",
+        en: "System",
     },
     Translation {
-        key: TextKey::ArchitectureLabel,
-        fr: "Architecture",
-        en: "Architecture",
-    },
-    Translation {
-        key: TextKey::ArchitectureBody,
-        fr: "core → platform → app → ui, avec un binaire racine mince.",
-        en: "core → platform → app → ui, with a thin root binary.",
+        key: TextKey::PlatformLimitedWarning,
+        fr: "Certaines touches peuvent ne pas fonctionner selon les autorisations système.",
+        en: "Some keys may not work depending on system permissions.",
     },
     Translation {
         key: TextKey::ThemeLabel,
@@ -373,26 +470,6 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "Light",
     },
     Translation {
-        key: TextKey::PlaceholderDevices,
-        fr: "La sélection des touches et les profils par appareil arrivent en M1–M3.",
-        en: "Key selection and device profiles arrive in M1–M3.",
-    },
-    Translation {
-        key: TextKey::PlaceholderActions,
-        fr: "Le catalogue d'actions et l'éditeur de raccourcis arrivent en M1–M3.",
-        en: "The action catalog and shortcut editor arrive in M1–M3.",
-    },
-    Translation {
-        key: TextKey::PlaceholderMacros,
-        fr: "L'éditeur et le moteur de macros arrivent en M1–M3.",
-        en: "The macro editor and engine arrive in M1–M3.",
-    },
-    Translation {
-        key: TextKey::PlannedInMilestone,
-        fr: "Prévu dans un prochain jalon.",
-        en: "Planned for a later milestone.",
-    },
-    Translation {
         key: TextKey::LastErrorLabel,
         fr: "Dernière erreur",
         en: "Last error",
@@ -401,8 +478,8 @@ pub const TRANSLATIONS: &[Translation] = &[
 
 /// Returns the translated string for `key`.
 ///
-/// Falls back to English, then to a visible placeholder, so a missing row is
-/// caught by tests instead of panicking in production.
+/// Falls back to a visible placeholder so a missing row is caught by tests
+/// instead of panicking in production.
 pub fn tr(language: Language, key: TextKey) -> &'static str {
     let Some(translation) = TRANSLATIONS.iter().find(|row| row.key == key) else {
         return "missing translation";
@@ -467,6 +544,52 @@ mod tests {
                 "empty English row for {:?}",
                 row.key
             );
+        }
+    }
+
+    #[test]
+    fn translations_do_not_expose_developer_vocabulary() {
+        let forbidden = [
+            "M0",
+            "M1",
+            "M2",
+            "M3",
+            "M4",
+            "M5",
+            "M6",
+            "runtime",
+            "hotkey",
+            "hotkeys",
+            "core",
+            "platform",
+            "architecture",
+            "workspace",
+            "milestone",
+            "jalon",
+            "domaine",
+            "tests",
+            "simulation",
+            "roadmap",
+            "feuille de route",
+        ];
+
+        for row in TRANSLATIONS {
+            for term in forbidden {
+                assert!(
+                    !row.fr
+                        .to_ascii_lowercase()
+                        .contains(&term.to_ascii_lowercase()),
+                    "developer term {term:?} leaked into French UI string: {}",
+                    row.fr
+                );
+                assert!(
+                    !row.en
+                        .to_ascii_lowercase()
+                        .contains(&term.to_ascii_lowercase()),
+                    "developer term {term:?} leaked into English UI string: {}",
+                    row.en
+                );
+            }
         }
     }
 }

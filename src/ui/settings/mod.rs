@@ -1,13 +1,12 @@
-//! Settings view: navigation and page dispatch.
+//! Settings view: navigation, preferences and page dispatch.
 
 mod about;
 mod general;
 
-use crate::app::{RuntimeHandle, RuntimeSnapshot};
+use crate::app::{RuntimeHandle, RuntimeSnapshot, RuntimeState};
 use crate::core::{Language, PlatformInfo, TextKey, tr};
+use crate::ui::{ThemeMode, theme, widgets};
 use eframe::egui;
-
-use crate::ui::widgets;
 
 /// Settings sections shown in the left navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -47,62 +46,98 @@ impl SettingsTab {
     }
 }
 
-/// Draws the left navigation.
-pub fn navigation(ui: &mut egui::Ui, language: Language, selected: &mut SettingsTab) {
-    ui.add_space(12.0);
-    ui.label(
-        egui::RichText::new(tr(language, TextKey::Navigation))
-            .small()
-            .weak(),
-    );
-    ui.add_space(4.0);
+/// UI-only preferences shared by the settings pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UiPreferences {
+    /// Active interface language.
+    pub language: Language,
+    /// Active color theme.
+    pub theme_mode: ThemeMode,
+}
 
-    for tab in SettingsTab::ALL {
-        let _ = ui.selectable_value(selected, tab, tab.label(language));
+impl Default for UiPreferences {
+    fn default() -> Self {
+        Self {
+            language: Language::Fr,
+            theme_mode: ThemeMode::Dark,
+        }
     }
+}
 
-    ui.add_space(12.0);
-    ui.separator();
-    ui.add_space(8.0);
-    ui.label(tr(language, TextKey::Status));
-    ui.label(
-        egui::RichText::new(tr(language, TextKey::Milestone0Title))
-            .color(crate::ui::theme::ACCENT)
-            .strong(),
-    );
+/// Draws the large sidebar navigation items.
+pub fn navigation(ui: &mut egui::Ui, language: Language, selected: &mut SettingsTab) {
+    for tab in SettingsTab::ALL {
+        if widgets::nav_item(ui, tab.label(language), *selected == tab).clicked() {
+            *selected = tab;
+        }
+    }
+}
+
+/// Translated label and color for a runtime state.
+pub fn state_label(language: Language, state: RuntimeState) -> (&'static str, egui::Color32) {
+    match state {
+        RuntimeState::Starting => (tr(language, TextKey::StateStarting), theme::WARNING),
+        RuntimeState::Running => (tr(language, TextKey::StateRunning), theme::SUCCESS),
+        RuntimeState::Paused => (tr(language, TextKey::StatePaused), theme::WARNING),
+        RuntimeState::Stopped => (tr(language, TextKey::StateStopped), theme::DANGER),
+    }
 }
 
 /// Draws the selected settings page.
 pub fn page(
     ui: &mut egui::Ui,
-    language: Language,
+    preferences: &mut UiPreferences,
     tab: SettingsTab,
     runtime: &RuntimeHandle,
     snapshot: &RuntimeSnapshot,
     platform: PlatformInfo,
 ) {
     match tab {
-        SettingsTab::General => general::show(ui, language, runtime, snapshot),
-        SettingsTab::Devices => {
-            placeholder(ui, language, TextKey::PlaceholderDevices);
-        }
-        SettingsTab::Actions => {
-            placeholder(ui, language, TextKey::PlaceholderActions);
-        }
-        SettingsTab::Macros => {
-            placeholder(ui, language, TextKey::PlaceholderMacros);
-        }
-        SettingsTab::About => about::show(ui, language, platform),
+        SettingsTab::General => general::show(ui, preferences, runtime, snapshot),
+        SettingsTab::Devices => placeholder(
+            ui,
+            preferences.language,
+            TextKey::TabDevices,
+            TextKey::DevicesSubtitle,
+            TextKey::EmptyDevicesTitle,
+            TextKey::EmptyDevicesBody,
+        ),
+        SettingsTab::Actions => placeholder(
+            ui,
+            preferences.language,
+            TextKey::TabActions,
+            TextKey::ActionsSubtitle,
+            TextKey::EmptyActionsTitle,
+            TextKey::EmptyActionsBody,
+        ),
+        SettingsTab::Macros => placeholder(
+            ui,
+            preferences.language,
+            TextKey::TabMacros,
+            TextKey::MacrosSubtitle,
+            TextKey::EmptyMacrosTitle,
+            TextKey::EmptyMacrosBody,
+        ),
+        SettingsTab::About => about::show(ui, preferences.language, platform),
     }
 }
 
-fn placeholder(ui: &mut egui::Ui, language: Language, message: TextKey) {
+fn placeholder(
+    ui: &mut egui::Ui,
+    language: Language,
+    title: TextKey,
+    subtitle: TextKey,
+    empty_title: TextKey,
+    empty_body: TextKey,
+) {
+    widgets::page_header(ui, tr(language, title), tr(language, subtitle));
     widgets::card(ui, |ui| {
-        ui.label(egui::RichText::new(tr(language, message)).weak());
-        ui.label(
-            egui::RichText::new(tr(language, TextKey::PlannedInMilestone))
-                .small()
-                .weak(),
+        widgets::empty_state(
+            ui,
+            tr(language, empty_title),
+            tr(language, empty_body),
+            tr(language, TextKey::ComingSoonBadge),
+            theme::ACCENT,
         );
     });
 }

@@ -19,6 +19,14 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Verify `cargo fmt`, `cargo clippy` and `cargo test` locally.
 - [x] Commit and push the initial repository to `RedsTom/wheelie`.
 
+## UI foundation (pre-M1)
+
+- [x] Fluent-inspired dark and light themes.
+- [x] Bundled Inter font with OFL license.
+- [x] Full-height sidebar, cards, large actions and status pills.
+- [x] User-facing FR/EN copy with a developer-vocabulary blocklist test.
+- [x] Empty states for Devices, Actions and Macros.
+
 ## M1 — Pure domain
 
 - [ ] Versioned configuration schema with serde, defaults and validation.

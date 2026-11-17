@@ -12,9 +12,9 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0 complete: single-crate module layout, docs and CI are green on Windows, macOS
-and Ubuntu. M1 (pure domain) is next. `ROADMAP.md` is the authoritative checklist;
-update it when a milestone item lands.
+M0 complete plus a Fluent-inspired UI foundation pass: docs and CI are green on
+Windows, macOS and Ubuntu. M1 (pure domain) is next. `ROADMAP.md` is the
+authoritative checklist; update it when a milestone item lands.
 
 ## Architecture
 
@@ -98,8 +98,16 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 
 - Code, comments, docs, error messages, log messages and commit messages are
   **English**. French exists only in translation rows.
+- Never expose developer vocabulary in the UI. This includes milestone IDs
+  (M0–M6), module or layer names (`core`, `platform`, `app`, `ui`), and terms such
+  as runtime, hotkey, config, capture, architecture, roadmap, workspace, test or
+  simulation. UI copy describes what the user can do. Keep developer language in
+  code, commits, docs and this file.
 - UI strings only via `TextKey` + `TRANSLATIONS`; never hardcode French or English
-  prose in UI modules.
+  prose in UI modules. The `translations_do_not_expose_developer_vocabulary` test
+  enforces a blocklist; extend it when a new internal term appears.
+- The UI bundles Inter in `assets/fonts`; keep `OFL.txt` with it and prefer bundled
+  assets over runtime system-font discovery.
 - Error handling: `thiserror` in libraries, `anyhow` only in the composition root.
 - No Tokio, Tauri, Electron, WebView, kernel driver or virtual HID.
 - Keep `unsafe` out of the codebase unless a platform adapter cannot be implemented
