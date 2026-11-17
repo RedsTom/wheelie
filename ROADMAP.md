@@ -27,17 +27,17 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] User-facing FR/EN copy with a developer-vocabulary blocklist test.
 - [x] Empty states for Devices, Actions and Macros.
 
-## M1 — Pure domain
+## M1 - Pure domain
 
-- [ ] Versioned configuration schema with serde, defaults and validation.
-- [ ] `KeyCode`, `Modifiers` and `KeyChord` with stable serde representation.
-- [ ] Action model and action catalog.
-- [ ] Macro model, validation and runner abstraction.
-- [ ] Gesture detector: debounce, single click, double click, rotation.
-- [ ] Profile model with key-based matching.
-- [ ] Radial wheel geometry and hit testing.
-- [ ] FR/EN translation completeness tests.
-- [ ] Unit tests for every domain rule.
+- [x] Versioned configuration schema with serde, defaults and validation.
+- [x] `KeyCode`, `Modifiers` and `KeyChord` with stable serde representation.
+- [x] Action model and action catalog.
+- [x] Macro model, validation and runner abstraction.
+- [x] Gesture detector: debounce, single click, double click, rotation.
+- [x] Profile model with key-based matching.
+- [x] Radial wheel geometry and hit testing.
+- [x] FR/EN translation completeness tests.
+- [x] Unit tests for every domain rule.
 
 ## M2 — Platform adapters
 

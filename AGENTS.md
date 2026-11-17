@@ -12,9 +12,10 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0 complete plus a Fluent-inspired UI foundation pass: docs and CI are green on
-Windows, macOS and Ubuntu. M1 (pure domain) is next. `ROADMAP.md` is the
-authoritative checklist; update it when a milestone item lands.
+M0 and M1 are complete: foundations, UI shell and the pure domain (config, keys,
+actions, macros, gestures, profiles, wheel geometry) are green on Windows, macOS
+and Ubuntu. M2 (platform adapters) is next. `ROADMAP.md` is the authoritative
+checklist; update it when a milestone item lands.
 
 ## Architecture
 
@@ -33,7 +34,8 @@ src/ui/           eframe only: settings pages, radial overlay, theme, widgets
 
 Rules:
 
-- `core` has no UI, OS, filesystem or thread dependencies.
+- `core` has no UI, OS or filesystem dependencies; it does not spawn threads or
+  use channels. The macro runner only sleeps between steps.
 - `platform` is the only module allowed to call OS APIs.
 - `app` contains business orchestration and no eframe.
 - `ui` contains no business rules and no OS calls.

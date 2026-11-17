@@ -15,9 +15,6 @@ use std::sync::Arc;
 /// Primary accent used by actions, selection and the wheel.
 pub const ACCENT: Color32 = Color32::from_rgb(75, 139, 255);
 
-/// Soft accent used for hover states.
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(96, 157, 255);
-
 /// Success color for connected/running states.
 pub const SUCCESS: Color32 = Color32::from_rgb(52, 211, 153);
 
@@ -52,20 +49,7 @@ const LIGHT_BORDER: Color32 = Color32::from_rgb(225, 228, 233);
 const LIGHT_TEXT: Color32 = Color32::from_rgb(23, 26, 32);
 const LIGHT_MUTED: Color32 = Color32::from_rgb(110, 118, 129);
 
-/// Theme exposed in settings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ThemeMode {
-    /// Dark theme.
-    #[default]
-    Dark,
-    /// Light theme.
-    Light,
-}
-
-impl ThemeMode {
-    /// All modes, in display order.
-    pub const ALL: [Self; 2] = [Self::Dark, Self::Light];
-}
+pub use crate::core::ThemeMode;
 
 /// Installs the bundled Inter family. Call once, before the first frame.
 pub fn install_fonts(context: &egui::Context) {
