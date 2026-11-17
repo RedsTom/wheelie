@@ -128,7 +128,14 @@ impl InputSink for EnigoInputSink {
             MediaCommand::PlayPause => Key::MediaPlayPause,
             MediaCommand::Next => Key::MediaNextTrack,
             MediaCommand::Previous => Key::MediaPrevTrack,
+            #[cfg(not(target_os = "macos"))]
             MediaCommand::Stop => Key::MediaStop,
+            #[cfg(target_os = "macos")]
+            MediaCommand::Stop => {
+                return Err(PlatformError::Unsupported(
+                    "media stop is not available on this platform",
+                ));
+            }
         };
         self.enigo.key(key, Direction::Click)?;
         Ok(())

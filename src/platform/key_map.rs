@@ -4,25 +4,41 @@ use crate::core::key::{KeyCode, Modifiers};
 use enigo::Key as EnigoKey;
 use global_hotkey::hotkey::{Code, Modifiers as HotkeyModifiers};
 
-macro_rules! define_key_mappings {
+/// Evaluates to `$on_macos` on macOS and `$other` everywhere else without
+/// referencing unavailable variants on macOS.
+macro_rules! limited_on_macos {
+    ($on_macos:expr, $other:expr) => {{
+        #[cfg(target_os = "macos")]
+        {
+            $on_macos
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            $other
+        }
+    }};
+}
+
+/// Generates mappings for keys available on every platform.
+macro_rules! define_common_key_mappings {
     ($($variant:ident => $code:ident, $enigo:expr),* $(,)?) => {
-        /// Maps a domain key to the global-hotkey code.
-        pub fn to_global_code(key: KeyCode) -> Option<Code> {
-            Some(match key {
-                $( KeyCode::$variant => Code::$code ),*
-            })
+        fn common_global_code(key: KeyCode) -> Option<Code> {
+            match key {
+                $( KeyCode::$variant => Some(Code::$code), )*
+                _ => None,
+            }
         }
 
-        /// Maps a domain key to an enigo key.
-        pub fn to_enigo_key(key: KeyCode) -> Option<EnigoKey> {
-            Some(match key {
-                $( KeyCode::$variant => $enigo ),*
-            })
+        fn common_enigo_key(key: KeyCode) -> Option<EnigoKey> {
+            match key {
+                $( KeyCode::$variant => Some($enigo), )*
+                _ => None,
+            }
         }
     };
 }
 
-define_key_mappings! {
+define_common_key_mappings! {
     KeyA => KeyA, EnigoKey::Unicode('a'),
     KeyB => KeyB, EnigoKey::Unicode('b'),
     KeyC => KeyC, EnigoKey::Unicode('c'),
@@ -79,10 +95,6 @@ define_key_mappings! {
     F18 => F18, EnigoKey::F18,
     F19 => F19, EnigoKey::F19,
     F20 => F20, EnigoKey::F20,
-    F21 => F21, EnigoKey::F21,
-    F22 => F22, EnigoKey::F22,
-    F23 => F23, EnigoKey::F23,
-    F24 => F24, EnigoKey::F24,
     ArrowUp => ArrowUp, EnigoKey::UpArrow,
     ArrowDown => ArrowDown, EnigoKey::DownArrow,
     ArrowLeft => ArrowLeft, EnigoKey::LeftArrow,
@@ -91,7 +103,6 @@ define_key_mappings! {
     End => End, EnigoKey::End,
     PageUp => PageUp, EnigoKey::PageUp,
     PageDown => PageDown, EnigoKey::PageDown,
-    Insert => Insert, EnigoKey::Insert,
     Delete => Delete, EnigoKey::Delete,
     Space => Space, EnigoKey::Space,
     Enter => Enter, EnigoKey::Return,
@@ -104,7 +115,45 @@ define_key_mappings! {
     MediaPlayPause => MediaPlayPause, EnigoKey::MediaPlayPause,
     MediaNext => MediaTrackNext, EnigoKey::MediaNextTrack,
     MediaPrevious => MediaTrackPrevious, EnigoKey::MediaPrevTrack,
-    MediaStop => MediaStop, EnigoKey::MediaStop,
+}
+
+/// Maps a domain key to the global-hotkey code.
+pub fn to_global_code(key: KeyCode) -> Option<Code> {
+    match key {
+        KeyCode::F21 => Some(Code::F21),
+        KeyCode::F22 => Some(Code::F22),
+        KeyCode::F23 => Some(Code::F23),
+        KeyCode::F24 => Some(Code::F24),
+        KeyCode::Insert => Some(Code::Insert),
+        KeyCode::MediaStop => Some(Code::MediaStop),
+        other => common_global_code(other),
+    }
+}
+
+/// Maps a domain key to an enigo key.
+///
+/// `F21`-`F24`, `Insert` and `MediaStop` are not available in `enigo` on
+/// macOS, so they map to `None` there.
+pub fn to_enigo_key(key: KeyCode) -> Option<EnigoKey> {
+    match key {
+        KeyCode::F21 | KeyCode::F22 | KeyCode::F23 | KeyCode::F24 => limited_function_key(key),
+        KeyCode::Insert => limited_on_macos!(None, Some(EnigoKey::Insert)),
+        KeyCode::MediaStop => limited_on_macos!(None, Some(EnigoKey::MediaStop)),
+        other => common_enigo_key(other),
+    }
+}
+
+fn limited_function_key(key: KeyCode) -> Option<EnigoKey> {
+    limited_on_macos!(
+        None,
+        match key {
+            KeyCode::F21 => Some(EnigoKey::F21),
+            KeyCode::F22 => Some(EnigoKey::F22),
+            KeyCode::F23 => Some(EnigoKey::F23),
+            KeyCode::F24 => Some(EnigoKey::F24),
+            _ => None,
+        }
+    )
 }
 
 /// Maps domain modifiers to global-hotkey modifiers.
@@ -148,17 +197,41 @@ mod tests {
     use super::*;
     use crate::core::key::KeyChord;
 
+    /// Keys that `enigo` cannot inject on macOS.
+    const MACOS_LIMITED: &[KeyCode] = &[
+        KeyCode::F21,
+        KeyCode::F22,
+        KeyCode::F23,
+        KeyCode::F24,
+        KeyCode::Insert,
+        KeyCode::MediaStop,
+    ];
+
     #[test]
-    fn every_key_code_maps_to_both_platforms() {
+    fn every_key_code_maps_to_global_hotkeys() {
         for key in KeyCode::ALL {
             assert!(
                 to_global_code(*key).is_some(),
                 "missing global-hotkey mapping for {key}"
             );
-            assert!(
-                to_enigo_key(*key).is_some(),
-                "missing enigo mapping for {key}"
-            );
+        }
+    }
+
+    #[test]
+    fn every_key_code_maps_to_enigo_where_supported() {
+        for key in KeyCode::ALL {
+            let supported = !cfg!(target_os = "macos") || !MACOS_LIMITED.contains(key);
+            if supported {
+                assert!(
+                    to_enigo_key(*key).is_some(),
+                    "missing enigo mapping for {key}"
+                );
+            } else {
+                assert!(
+                    to_enigo_key(*key).is_none(),
+                    "unexpected enigo mapping for {key}"
+                );
+            }
         }
     }
 
@@ -167,7 +240,6 @@ mod tests {
         assert_eq!(to_global_code(KeyCode::F13), Some(Code::F13));
         assert_eq!(to_enigo_key(KeyCode::F13), Some(EnigoKey::F13));
         assert_eq!(to_global_code(KeyCode::F24), Some(Code::F24));
-        assert_eq!(to_enigo_key(KeyCode::F24), Some(EnigoKey::F24));
     }
 
     #[test]
@@ -181,6 +253,10 @@ mod tests {
             Some(EnigoKey::MediaPrevTrack)
         );
         assert_eq!(to_global_code(KeyCode::VolumeUp), Some(Code::AudioVolumeUp));
+        assert_eq!(
+            to_enigo_key(KeyCode::VolumeMute),
+            Some(EnigoKey::VolumeMute)
+        );
     }
 
     #[test]
