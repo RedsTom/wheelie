@@ -35,7 +35,7 @@ fn runtime_card(
 ) {
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::wheel_logo(ui, 54.0, theme::ACCENT);
+            widgets::wheel_logo(ui, 44.0, theme::ACCENT);
             ui.add_space(4.0);
             ui.vertical(|ui| {
                 let title = match snapshot.state {
@@ -50,13 +50,13 @@ fn runtime_card(
                 };
                 ui.label(
                     egui::RichText::new(tr(language, title))
-                        .font(theme::heading_font(21.0))
+                        .font(theme::heading_font(18.0))
                         .color(theme::card_text(ui)),
                 );
                 ui.add_space(2.0);
                 ui.label(
                     egui::RichText::new(tr(language, body))
-                        .size(13.5)
+                        .size(13.0)
                         .color(theme::muted(ui)),
                 );
             });
@@ -84,33 +84,12 @@ fn runtime_card(
         });
 
         if let Some(error) = &snapshot.last_error {
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.colored_label(
                 theme::DANGER,
                 format!("{}: {error}", tr(language, TextKey::LastErrorLabel)),
             );
         }
-
-        ui.add_space(14.0);
-        ui.separator();
-        ui.add_space(12.0);
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(tr(language, TextKey::ActiveProfileLabel))
-                    .size(12.5)
-                    .color(theme::muted(ui)),
-            );
-            ui.label(
-                egui::RichText::new(
-                    snapshot
-                        .active_profile
-                        .as_deref()
-                        .unwrap_or_else(|| tr(language, TextKey::NoProfileLabel)),
-                )
-                .size(12.5)
-                .color(theme::card_text(ui)),
-            );
-        });
     });
 }
 
@@ -122,7 +101,7 @@ fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
             tr(language, TextKey::PreferencesTitle),
             Some(tr(language, TextKey::PreferencesBody)),
         );
-        ui.add_space(14.0);
+        ui.add_space(10.0);
 
         widgets::setting_row(
             ui,
@@ -131,7 +110,7 @@ fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
             |ui| {
                 egui::ComboBox::from_id_salt("theme")
                     .selected_text(theme_label(preferences.language, preferences.theme_mode))
-                    .width(150.0)
+                    .width(130.0)
                     .show_ui(ui, |ui| {
                         for mode in ThemeMode::ALL {
                             ui.selectable_value(
@@ -144,9 +123,9 @@ fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
             },
         );
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         ui.separator();
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         widgets::setting_row(
             ui,
@@ -155,7 +134,7 @@ fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
             |ui| {
                 egui::ComboBox::from_id_salt("language")
                     .selected_text(preferences.language.native_name())
-                    .width(150.0)
+                    .width(130.0)
                     .show_ui(ui, |ui| {
                         for language in Language::ALL {
                             ui.selectable_value(
@@ -177,7 +156,7 @@ fn getting_started_card(ui: &mut egui::Ui, language: Language) {
             tr(language, TextKey::GettingStartedTitle),
             Some(tr(language, TextKey::GettingStartedSubtitle)),
         );
-        ui.add_space(14.0);
+        ui.add_space(10.0);
         widgets::timeline_item(
             ui,
             1,
@@ -185,7 +164,7 @@ fn getting_started_card(ui: &mut egui::Ui, language: Language) {
             tr(language, TextKey::StepConfigureBody),
             true,
         );
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         widgets::timeline_item(
             ui,
             2,
@@ -193,7 +172,7 @@ fn getting_started_card(ui: &mut egui::Ui, language: Language) {
             tr(language, TextKey::StepAssignBody),
             false,
         );
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         widgets::timeline_item(
             ui,
             3,

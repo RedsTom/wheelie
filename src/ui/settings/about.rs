@@ -13,35 +13,35 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
 
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::wheel_logo(ui, 64.0, theme::ACCENT);
+            widgets::wheel_logo(ui, 56.0, theme::ACCENT);
             ui.add_space(6.0);
             ui.vertical(|ui| {
                 ui.label(
                     egui::RichText::new(APP_NAME)
-                        .font(theme::heading_font(24.0))
+                        .font(theme::heading_font(20.0))
                         .color(theme::card_text(ui)),
                 );
                 ui.add_space(2.0);
                 ui.label(
                     egui::RichText::new(tr(language, TextKey::AppTagline))
-                        .size(13.5)
+                        .size(12.5)
                         .color(theme::muted(ui)),
                 );
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 widgets::status_pill(ui, tr(language, TextKey::FreeSoftware), theme::ACCENT);
             });
         });
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         ui.label(
             egui::RichText::new(tr(language, TextKey::AboutBody))
-                .size(13.5)
+                .size(13.0)
                 .color(theme::muted(ui)),
         );
 
-        ui.add_space(14.0);
-        ui.separator();
         ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(8.0);
 
         info_row(ui, language, TextKey::VersionLabel, VERSION);
         info_row(ui, language, TextKey::LicenseLabel, "GPL-3.0-only");
@@ -50,13 +50,13 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
     ui.add_space(14.0);
     widgets::card(ui, |ui| {
         widgets::section_title(ui, tr(language, TextKey::PlatformCardTitle), None);
-        ui.add_space(12.0);
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             widgets::status_pill(ui, platform.os, theme::ACCENT);
         });
 
         if platform.capture_is_limited {
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             ui.colored_label(
                 theme::WARNING,
                 tr(language, TextKey::PlatformLimitedWarning),
@@ -66,16 +66,17 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
 }
 
 fn info_row(ui: &mut egui::Ui, language: Language, label: TextKey, value: &str) {
+    ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(tr(language, label))
-                .size(13.0)
+                .size(12.5)
                 .color(theme::muted(ui)),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 egui::RichText::new(value)
-                    .size(13.0)
+                    .size(12.5)
                     .color(theme::card_text(ui)),
             );
         });

@@ -108,6 +108,10 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
   enforces a blocklist; extend it when a new internal term appears.
 - The UI bundles Inter in `assets/fonts`; keep `OFL.txt` with it and prefer bundled
   assets over runtime system-font discovery.
+- Keep the UI compact and professional: buttons, combo boxes and status chips share
+  `theme::CONTROL_HEIGHT` (currently 32 px) and small radii. Status chips are
+  disabled `egui::Button`s with an explicit fill; do not hand-roll frames with a
+  different height. Avoid decorative glows, gradients or oversized cards.
 - Error handling: `thiserror` in libraries, `anyhow` only in the composition root.
 - No Tokio, Tauri, Electron, WebView, kernel driver or virtual HID.
 - Keep `unsafe` out of the codebase unless a platform adapter cannot be implemented

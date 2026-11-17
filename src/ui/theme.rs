@@ -28,26 +28,29 @@ pub const WARNING: Color32 = Color32::from_rgb(245, 158, 11);
 pub const DANGER: Color32 = Color32::from_rgb(248, 113, 113);
 
 /// Outer card radius.
-pub const RADIUS_CARD: u8 = 16;
+pub const RADIUS_CARD: u8 = 8;
 
 /// Smaller control radius.
-pub const RADIUS_CONTROL: u8 = 10;
+pub const RADIUS_CONTROL: u8 = 4;
 
-const DARK_BG: Color32 = Color32::from_rgb(10, 13, 20);
-const DARK_SIDEBAR: Color32 = Color32::from_rgb(14, 18, 27);
-const DARK_CARD: Color32 = Color32::from_rgb(22, 27, 38);
-const DARK_CARD_HOVER: Color32 = Color32::from_rgb(28, 34, 47);
-const DARK_BORDER: Color32 = Color32::from_rgb(40, 48, 64);
+/// Height shared by buttons, pills and combo boxes.
+pub const CONTROL_HEIGHT: f32 = 32.0;
+
+const DARK_BG: Color32 = Color32::from_rgb(13, 16, 23);
+const DARK_SIDEBAR: Color32 = Color32::from_rgb(17, 20, 28);
+const DARK_CARD: Color32 = Color32::from_rgb(24, 28, 38);
+const DARK_CARD_HOVER: Color32 = Color32::from_rgb(31, 36, 48);
+const DARK_BORDER: Color32 = Color32::from_rgb(44, 51, 64);
 const DARK_TEXT: Color32 = Color32::from_rgb(235, 239, 247);
 const DARK_MUTED: Color32 = Color32::from_rgb(148, 160, 181);
 
-const LIGHT_BG: Color32 = Color32::from_rgb(246, 248, 252);
-const LIGHT_SIDEBAR: Color32 = Color32::from_rgb(238, 242, 247);
+const LIGHT_BG: Color32 = Color32::from_rgb(247, 248, 250);
+const LIGHT_SIDEBAR: Color32 = Color32::from_rgb(240, 242, 245);
 const LIGHT_CARD: Color32 = Color32::from_rgb(255, 255, 255);
-const LIGHT_CARD_HOVER: Color32 = Color32::from_rgb(248, 250, 253);
-const LIGHT_BORDER: Color32 = Color32::from_rgb(224, 230, 239);
-const LIGHT_TEXT: Color32 = Color32::from_rgb(15, 23, 42);
-const LIGHT_MUTED: Color32 = Color32::from_rgb(100, 116, 139);
+const LIGHT_CARD_HOVER: Color32 = Color32::from_rgb(248, 249, 251);
+const LIGHT_BORDER: Color32 = Color32::from_rgb(225, 228, 233);
+const LIGHT_TEXT: Color32 = Color32::from_rgb(23, 26, 32);
+const LIGHT_MUTED: Color32 = Color32::from_rgb(110, 118, 129);
 
 /// Theme exposed in settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -185,29 +188,29 @@ pub fn apply(context: &egui::Context, mode: ThemeMode) {
     visuals.slider_trailing_fill = true;
 
     style.visuals = visuals;
-    style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-    style.spacing.button_padding = egui::vec2(18.0, 10.0);
-    style.spacing.interact_size = egui::vec2(44.0, 40.0);
-    style.spacing.menu_margin = Margin::same(8);
-    style.animation_time = 0.12;
+    style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+    style.spacing.button_padding = egui::vec2(16.0, 8.0);
+    style.spacing.interact_size = egui::vec2(40.0, CONTROL_HEIGHT);
+    style.spacing.menu_margin = Margin::same(6);
+    style.animation_time = 0.08;
     style.text_styles.insert(
         TextStyle::Heading,
-        FontId::new(30.0, FontFamily::Name("InterSemiBold".into())),
+        FontId::new(24.0, FontFamily::Name("InterSemiBold".into())),
     );
     style
         .text_styles
-        .insert(TextStyle::Body, FontId::new(15.0, FontFamily::Proportional));
+        .insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
     style.text_styles.insert(
         TextStyle::Button,
-        FontId::new(15.0, FontFamily::Proportional),
+        FontId::new(14.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Small,
-        FontId::new(12.5, FontFamily::Proportional),
+        FontId::new(12.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Monospace,
-        FontId::new(13.5, FontFamily::Monospace),
+        FontId::new(13.0, FontFamily::Monospace),
     );
 
     context.set_style(style);
@@ -237,7 +240,7 @@ pub fn background(mode: ThemeMode) -> Color32 {
     }
 }
 
-/// Card frame with a border and generous padding.
+/// Card frame with a border and compact padding.
 pub fn card_frame(ui: &egui::Ui) -> egui::Frame {
     egui::Frame::NONE
         .fill(ui.visuals().faint_bg_color)
@@ -246,12 +249,12 @@ pub fn card_frame(ui: &egui::Ui) -> egui::Frame {
             ui.visuals().widgets.noninteractive.bg_stroke.color,
         ))
         .corner_radius(CornerRadius::same(RADIUS_CARD))
-        .inner_margin(Margin::same(20))
+        .inner_margin(Margin::same(14))
 }
 
 /// Soft accent background used by selected navigation items.
 pub fn accent_soft() -> Color32 {
-    ACCENT.gamma_multiply(0.16)
+    ACCENT.gamma_multiply(0.14)
 }
 
 /// Palette used for text on cards.

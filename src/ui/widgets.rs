@@ -1,7 +1,7 @@
 //! Shared visual components.
 
 use eframe::egui;
-use egui::{Align2, Color32, CornerRadius, FontId, Margin, RichText, Sense, Stroke, Vec2};
+use egui::{Align2, Color32, CornerRadius, FontId, RichText, Sense, Stroke, Vec2};
 
 use crate::ui::theme;
 
@@ -13,62 +13,63 @@ pub fn card(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
-/// Large page title and muted subtitle.
+/// Compact page title and muted subtitle.
 pub fn page_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
     ui.label(
         RichText::new(title)
-            .font(theme::heading_font(32.0))
+            .font(theme::heading_font(24.0))
             .color(theme::card_text(ui)),
     );
-    ui.add_space(6.0);
-    ui.label(RichText::new(subtitle).size(14.5).color(theme::muted(ui)));
-    ui.add_space(24.0);
+    ui.add_space(3.0);
+    ui.label(RichText::new(subtitle).size(13.0).color(theme::muted(ui)));
+    ui.add_space(14.0);
 }
 
 /// Section title used inside a card.
 pub fn section_title(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) {
     ui.label(
         RichText::new(title)
-            .font(theme::heading_font(18.0))
+            .font(theme::heading_font(16.0))
             .color(theme::card_text(ui)),
     );
     if let Some(subtitle) = subtitle {
-        ui.add_space(3.0);
-        ui.label(RichText::new(subtitle).size(13.0).color(theme::muted(ui)));
+        ui.add_space(2.0);
+        ui.label(RichText::new(subtitle).size(12.5).color(theme::muted(ui)));
     }
 }
 
-/// Filled primary action.
+/// Filled primary action. Height matches status pills.
 pub fn primary_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     ui.add(
         egui::Button::new(
             RichText::new(label)
-                .size(15.0)
+                .size(14.0)
                 .strong()
                 .color(Color32::WHITE),
         )
         .fill(theme::ACCENT)
         .stroke(Stroke::NONE)
         .corner_radius(CornerRadius::same(theme::RADIUS_CONTROL))
-        .min_size(Vec2::new(156.0, 42.0)),
+        .min_size(Vec2::new(0.0, theme::CONTROL_HEIGHT)),
     )
 }
 
-/// Subtle outlined action.
+/// Subtle outlined action. Height matches status pills.
 pub fn secondary_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     ui.add(
-        egui::Button::new(RichText::new(label).size(14.5).color(theme::card_text(ui)))
+        egui::Button::new(RichText::new(label).size(13.5).color(theme::card_text(ui)))
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::new(1.0_f32, theme::border(ui)))
             .corner_radius(CornerRadius::same(theme::RADIUS_CONTROL))
-            .min_size(Vec2::new(132.0, 40.0)),
+            .min_size(Vec2::new(0.0, theme::CONTROL_HEIGHT)),
     )
 }
 
-/// Large sidebar navigation item.
+/// Compact sidebar navigation item.
 pub fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 44.0), Sense::click());
+    let height = theme::CONTROL_HEIGHT + 4.0;
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
     let visuals = ui.visuals();
 
     let background = if selected {
@@ -86,8 +87,8 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Respons
 
     if selected {
         let bar = egui::Rect::from_min_size(
-            rect.left_top() + Vec2::new(0.0, 11.0),
-            Vec2::new(3.0, rect.height() - 22.0),
+            rect.left_top() + Vec2::new(0.0, 8.0),
+            Vec2::new(3.0, rect.height() - 16.0),
         );
         ui.painter()
             .rect_filled(bar, CornerRadius::same(2), theme::accent(ui));
@@ -99,13 +100,13 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Respons
         visuals.widgets.inactive.fg_stroke.color
     };
     let font = if selected {
-        theme::heading_font(15.0)
+        theme::heading_font(14.0)
     } else {
-        FontId::proportional(15.0)
+        FontId::proportional(14.0)
     };
 
     ui.painter().text(
-        rect.left_center() + Vec2::new(16.0, 0.0),
+        rect.left_center() + Vec2::new(14.0, 0.0),
         Align2::LEFT_CENTER,
         label,
         font,
@@ -115,15 +116,16 @@ pub fn nav_item(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Respons
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// Small status indicator with a colored background.
+/// Status pill with exactly the same control height as buttons.
 pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
-    let _ = egui::Frame::NONE
-        .fill(color.gamma_multiply(0.16))
-        .corner_radius(CornerRadius::same(10))
-        .inner_margin(Margin::symmetric(16, 7))
-        .show(ui, |ui| {
-            ui.label(RichText::new(label).size(12.5).strong().color(color));
-        });
+    let _ = ui.add_enabled(
+        false,
+        egui::Button::new(RichText::new(label).size(14.0).strong().color(color))
+            .fill(color.gamma_multiply(0.16))
+            .stroke(Stroke::NONE)
+            .corner_radius(CornerRadius::same(theme::RADIUS_CONTROL))
+            .min_size(Vec2::new(0.0, theme::CONTROL_HEIGHT)),
+    );
 }
 
 /// Centered empty state for a section that is not implemented yet.
@@ -134,25 +136,25 @@ pub fn empty_state(
     badge: &str,
     badge_color: Color32,
 ) {
-    ui.add_space(28.0);
+    ui.add_space(18.0);
     ui.vertical_centered(|ui| {
-        wheel_logo(ui, 96.0, theme::accent(ui));
-        ui.add_space(18.0);
+        wheel_logo(ui, 72.0, theme::accent(ui));
+        ui.add_space(12.0);
         ui.label(
             RichText::new(title)
-                .font(theme::heading_font(24.0))
+                .font(theme::heading_font(18.0))
                 .color(theme::card_text(ui)),
         );
-        ui.add_space(8.0);
+        ui.add_space(6.0);
         ui.label(
             RichText::new(description)
-                .size(14.0)
+                .size(13.0)
                 .color(theme::muted(ui)),
         );
-        ui.add_space(16.0);
+        ui.add_space(12.0);
         status_pill(ui, badge, badge_color);
     });
-    ui.add_space(28.0);
+    ui.add_space(18.0);
 }
 
 /// Draws a simple wheel mark without external icon fonts.
@@ -186,25 +188,25 @@ pub fn timeline_item(ui: &mut egui::Ui, index: usize, title: &str, body: &str, a
     let circle = if active { accent } else { border };
 
     ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::hover());
         ui.painter()
-            .circle_filled(rect.center(), 15.0, circle.gamma_multiply(0.16));
+            .circle_filled(rect.center(), 12.0, circle.gamma_multiply(0.16));
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
             index.to_string(),
-            theme::heading_font(13.0),
+            theme::heading_font(12.0),
             circle,
         );
 
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         ui.vertical(|ui| {
             ui.label(
                 RichText::new(title)
-                    .font(theme::heading_font(15.0))
+                    .font(theme::heading_font(14.0))
                     .color(theme::card_text(ui)),
             );
-            ui.label(RichText::new(body).size(13.0).color(muted));
+            ui.label(RichText::new(body).size(12.5).color(muted));
         });
     });
 }
@@ -221,10 +223,10 @@ pub fn setting_row(
         ui.vertical(|ui| {
             ui.label(
                 RichText::new(title)
-                    .font(theme::heading_font(15.0))
+                    .font(theme::heading_font(14.0))
                     .color(theme::card_text(ui)),
             );
-            ui.label(RichText::new(description).size(13.0).color(muted));
+            ui.label(RichText::new(description).size(12.5).color(muted));
         });
         ui.with_layout(
             egui::Layout::right_to_left(egui::Align::Center),
