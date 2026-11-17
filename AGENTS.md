@@ -12,10 +12,10 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0 and M1 are complete: foundations, UI shell and the pure domain (config, keys,
-actions, macros, gestures, profiles, wheel geometry) are green on Windows, macOS
-and Ubuntu. M2 (platform adapters) is next. `ROADMAP.md` is the authoritative
-checklist; update it when a milestone item lands.
+M0, M1 and M2 are complete: foundations, UI shell, pure domain and platform
+adapters (global-hotkey, enigo, autostart, single instance) are green on Windows,
+macOS and Ubuntu. M3 (runtime wiring and full UI) is next. `ROADMAP.md` is the
+authoritative checklist; update it when a milestone item lands.
 
 ## Architecture
 

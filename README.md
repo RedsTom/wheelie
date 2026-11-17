@@ -6,10 +6,10 @@ Windows Wheel itself. You assign the keys your keyboard software emits for knob
 left, knob right and knob press; Wheelie captures them exclusively and runs its own
 actions.
 
-> **Status: M0 and M1 complete.** The single-crate module layout, CI, license,
-> documentation, Fluent-inspired settings shell and pure domain model are in
-> place. M2 (platform adapters) is next; progress is tracked in
-> [`ROADMAP.md`](ROADMAP.md).
+> **Status: M0, M1 and M2 complete.** The single-crate module layout, CI, license,
+> documentation, Fluent-inspired settings shell, pure domain model and platform
+> adapters are in place. M3 (runtime wiring and full UI) is next; progress is
+> tracked in [`ROADMAP.md`](ROADMAP.md).
 
 Wheelie is not affiliated with Microsoft.
 

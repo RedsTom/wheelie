@@ -13,6 +13,10 @@ pub enum PlatformError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Input simulation failed.
+    #[error("input simulation failed: {0}")]
+    Input(#[from] enigo::InputError),
+
     /// An opaque operating-system error.
     #[error("{0}")]
     Other(String),

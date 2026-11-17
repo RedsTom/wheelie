@@ -39,18 +39,19 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] FR/EN translation completeness tests.
 - [x] Unit tests for every domain rule.
 
-## M2 — Platform adapters
+## M2 - Platform adapters
 
-- [ ] `global-hotkey` registration and unregistration.
-- [ ] `enigo` input sink: volume, scroll, shortcuts, mouse clicks, text.
-- [ ] App launch action.
-- [ ] Autostart adapter.
-- [ ] Single-instance adapter.
-- [ ] Injection guard to prevent hotkey feedback loops.
-- [ ] Mock hotkey and input adapters for tests.
+- [x] `global-hotkey` registration and unregistration.
+- [x] `enigo` input sink: volume, scroll, shortcuts, mouse clicks, text.
+- [x] App launch action.
+- [x] Autostart adapter.
+- [x] Single-instance adapter.
+- [x] Injection guard to prevent hotkey feedback loops.
+- [x] Mock hotkey and input adapters for tests.
 
-## M3 — UI
+## M3 - UI
 
+- [ ] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
 - [ ] Settings: General, Devices, Actions, Macros, About.
 - [ ] Knob key picker with live test button.
 - [ ] Radial overlay centered on the primary screen.
