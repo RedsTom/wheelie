@@ -106,7 +106,7 @@ impl WheelieApp {
 
         egui::Frame::NONE
             .fill(ui.visuals().faint_bg_color)
-            .stroke(Stroke::new(1.0, theme::border(ui)))
+            .stroke(Stroke::new(1.0_f32, theme::border(ui)))
             .corner_radius(12)
             .inner_margin(12)
             .show(ui, |ui| {
@@ -189,7 +189,7 @@ fn paint_background(ui: &egui::Ui, mode: ThemeMode) {
         ThemeMode::Light => 0.035,
     };
 
-    painter.rect_filled(rect, 0.0, theme::background(mode));
+    painter.rect_filled(rect, egui::CornerRadius::ZERO, theme::background(mode));
     painter.circle_filled(
         rect.right_top() + egui::vec2(-120.0, 80.0),
         260.0,

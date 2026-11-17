@@ -132,12 +132,12 @@ pub fn apply(context: &egui::Context, mode: ThemeMode) {
     visuals.faint_bg_color = card;
     visuals.extreme_bg_color = bg;
     visuals.code_bg_color = card;
-    visuals.window_stroke = Stroke::new(1.0, border);
+    visuals.window_stroke = Stroke::new(1.0_f32, border);
     visuals.window_corner_radius = CornerRadius::same(RADIUS_CARD);
     visuals.menu_corner_radius = CornerRadius::same(RADIUS_CONTROL);
     visuals.hyperlink_color = ACCENT;
     visuals.selection.bg_fill = ACCENT.gamma_multiply(0.22);
-    visuals.selection.stroke = Stroke::new(1.0, ACCENT);
+    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.window_shadow = Shadow {
         offset: [0, 12],
         blur: 28,
@@ -153,32 +153,32 @@ pub fn apply(context: &egui::Context, mode: ThemeMode) {
 
     visuals.widgets.noninteractive.bg_fill = card;
     visuals.widgets.noninteractive.weak_bg_fill = card;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, border);
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, text);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, text);
     visuals.widgets.noninteractive.corner_radius = CornerRadius::same(RADIUS_CONTROL);
 
     visuals.widgets.inactive.bg_fill = card;
     visuals.widgets.inactive.weak_bg_fill = card;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, border);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, text);
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, border);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, text);
     visuals.widgets.inactive.corner_radius = CornerRadius::same(RADIUS_CONTROL);
 
     visuals.widgets.hovered.bg_fill = card_hover;
     visuals.widgets.hovered.weak_bg_fill = card_hover;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT.gamma_multiply(0.65));
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, text);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT.gamma_multiply(0.65));
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, text);
     visuals.widgets.hovered.corner_radius = CornerRadius::same(RADIUS_CONTROL);
 
     visuals.widgets.active.bg_fill = ACCENT.gamma_multiply(0.18);
     visuals.widgets.active.weak_bg_fill = ACCENT.gamma_multiply(0.18);
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, text);
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, text);
     visuals.widgets.active.corner_radius = CornerRadius::same(RADIUS_CONTROL);
 
     visuals.widgets.open.bg_fill = card_hover;
     visuals.widgets.open.weak_bg_fill = card_hover;
-    visuals.widgets.open.bg_stroke = Stroke::new(1.0, ACCENT.gamma_multiply(0.65));
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0, text);
+    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, ACCENT.gamma_multiply(0.65));
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, text);
     visuals.widgets.open.corner_radius = CornerRadius::same(RADIUS_CONTROL);
 
     visuals.override_text_color = None;
@@ -242,7 +242,7 @@ pub fn card_frame(ui: &egui::Ui) -> egui::Frame {
     egui::Frame::NONE
         .fill(ui.visuals().faint_bg_color)
         .stroke(Stroke::new(
-            1.0,
+            1.0_f32,
             ui.visuals().widgets.noninteractive.bg_stroke.color,
         ))
         .corner_radius(CornerRadius::same(RADIUS_CARD))

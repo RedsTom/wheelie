@@ -59,7 +59,7 @@ pub fn secondary_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     ui.add(
         egui::Button::new(RichText::new(label).size(14.5).color(theme::card_text(ui)))
             .fill(Color32::TRANSPARENT)
-            .stroke(Stroke::new(1.0, theme::border(ui)))
+            .stroke(Stroke::new(1.0_f32, theme::border(ui)))
             .corner_radius(CornerRadius::same(theme::RADIUS_CONTROL))
             .min_size(Vec2::new(132.0, 40.0)),
     )
