@@ -26,6 +26,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Full-height sidebar, cards, large actions and status pills.
 - [x] User-facing FR/EN copy with a developer-vocabulary blocklist test.
 - [x] Empty states for Devices, Actions and Macros.
+- [x] Provided logo used for the window icon and in-app branding.
 
 ## M1 - Pure domain
 
@@ -48,6 +49,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Single-instance adapter.
 - [x] Injection guard to prevent hotkey feedback loops.
 - [x] Mock hotkey and input adapters for tests.
+- [x] Platform-specific key availability handling for `enigo`.
 
 ## M3 - UI
 
