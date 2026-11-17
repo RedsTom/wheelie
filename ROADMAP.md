@@ -17,7 +17,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Add README, AGENTS.md and ROADMAP.md.
 - [x] Add three-OS GitHub Actions CI.
 - [x] Verify `cargo fmt`, `cargo clippy` and `cargo test` locally.
-- [ ] Commit and push the initial repository to `RedsTom/wheelie`.
+- [x] Commit and push the initial repository to `RedsTom/wheelie`.
 
 ## M1 — Pure domain
 

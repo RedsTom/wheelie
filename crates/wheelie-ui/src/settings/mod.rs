@@ -99,5 +99,10 @@ pub fn page(
 fn placeholder(ui: &mut egui::Ui, language: Language, message: TextKey) {
     widgets::card(ui, |ui| {
         ui.label(egui::RichText::new(tr(language, message)).weak());
+        ui.label(
+            egui::RichText::new(tr(language, TextKey::PlannedInMilestone))
+                .small()
+                .weak(),
+        );
     });
 }

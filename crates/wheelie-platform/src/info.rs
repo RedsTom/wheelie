@@ -1,6 +1,6 @@
 //! Platform capability description.
 
-use wheelie_core::PlatformInfo;
+use wheelie_core::{CaptureMode, PlatformInfo};
 
 #[cfg(target_os = "windows")]
 const OS_NAME: &str = "Windows";
@@ -12,13 +12,13 @@ const OS_NAME: &str = "Linux";
 const OS_NAME: &str = "Unknown";
 
 #[cfg(target_os = "windows")]
-const INPUT_CAPTURE: &str = "exclusive global hotkeys";
+const CAPTURE: CaptureMode = CaptureMode::ExclusiveHotkeys;
 #[cfg(target_os = "macos")]
-const INPUT_CAPTURE: &str = "global hotkeys (system permissions)";
+const CAPTURE: CaptureMode = CaptureMode::PermissionedHotkeys;
 #[cfg(all(unix, not(target_os = "macos")))]
-const INPUT_CAPTURE: &str = "X11; Wayland best effort";
+const CAPTURE: CaptureMode = CaptureMode::X11BestEffort;
 #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
-const INPUT_CAPTURE: &str = "unsupported";
+const CAPTURE: CaptureMode = CaptureMode::Unsupported;
 
 #[cfg(all(unix, not(target_os = "macos")))]
 const CAPTURE_IS_LIMITED: bool = true;
@@ -29,7 +29,7 @@ const CAPTURE_IS_LIMITED: bool = false;
 pub const fn info() -> PlatformInfo {
     PlatformInfo {
         os: OS_NAME,
-        input_capture: INPUT_CAPTURE,
+        capture: CAPTURE,
         capture_is_limited: CAPTURE_IS_LIMITED,
     }
 }
@@ -42,6 +42,5 @@ mod tests {
     fn platform_info_is_non_empty() {
         let platform = info();
         assert!(!platform.os.is_empty());
-        assert!(!platform.input_capture.is_empty());
     }
 }

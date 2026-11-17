@@ -1,7 +1,7 @@
 //! About page.
 
 use eframe::egui;
-use wheelie_core::{Language, PlatformInfo, REPOSITORY_URL, TextKey, VERSION, tr};
+use wheelie_core::{CaptureMode, Language, PlatformInfo, REPOSITORY_URL, TextKey, VERSION, tr};
 
 use crate::{theme, widgets};
 
@@ -28,7 +28,11 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
     widgets::card(ui, |ui| {
         ui.label(egui::RichText::new(tr(language, TextKey::PlatformCardTitle)).strong());
         ui.add_space(4.0);
-        ui.label(format!("{} — {}", platform.os, platform.input_capture));
+        ui.label(format!(
+            "{} — {}",
+            platform.os,
+            capture_mode_label(language, platform.capture)
+        ));
         if platform.capture_is_limited {
             ui.colored_label(
                 theme::WARNING,
@@ -36,6 +40,15 @@ pub fn show(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
             );
         }
     });
+}
+
+fn capture_mode_label(language: Language, mode: CaptureMode) -> &'static str {
+    match mode {
+        CaptureMode::ExclusiveHotkeys => tr(language, TextKey::CaptureModeExclusive),
+        CaptureMode::PermissionedHotkeys => tr(language, TextKey::CaptureModePermissioned),
+        CaptureMode::X11BestEffort => tr(language, TextKey::CaptureModeX11),
+        CaptureMode::Unsupported => tr(language, TextKey::CaptureModeUnsupported),
+    }
 }
 
 fn info_row(ui: &mut egui::Ui, label: &str, value: &str) {

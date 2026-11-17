@@ -10,4 +10,4 @@ pub mod platform;
 
 pub use app_info::{APP_ID, APP_NAME, REPOSITORY_URL, VERSION};
 pub use i18n::{Language, TextKey, tr};
-pub use platform::PlatformInfo;
+pub use platform::{CaptureMode, PlatformInfo};
