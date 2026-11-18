@@ -15,8 +15,9 @@ use crate::core::{
 };
 use crate::platform::{GlobalHotkeyService, InjectionGuard};
 use crate::ui::overlay::OverlayState;
+use crate::ui::pages::PageState;
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{assets, gestures, services, style, window};
+use crate::ui::{assets, gestures, pages, services, style, window};
 use gpui::prelude::*;
 use gpui::{
     App, AsyncApp, Bounds, Context, Pixels, QuitMode, Render, Window, WindowHandle, div, px,
@@ -34,6 +35,8 @@ pub struct ShellState {
     pub preferences: UiPreferences,
     /// Selected settings page.
     pub tab: SettingsTab,
+    /// Ephemeral page UI state (menus, buffers, focus).
+    pub page: PageState,
     /// Latest runtime snapshot.
     pub snapshot: RuntimeSnapshot,
     /// Platform capabilities.
@@ -78,7 +81,7 @@ pub struct ShellState {
 pub type Shared = Rc<RefCell<ShellState>>;
 
 impl ShellState {
-    fn new(runtime: RuntimeHandle) -> Self {
+    fn new(runtime: RuntimeHandle, cx: &App) -> Self {
         let config = runtime.config();
         let preferences = UiPreferences {
             language: config.language,
@@ -99,6 +102,7 @@ impl ShellState {
             runtime,
             preferences,
             tab: SettingsTab::default(),
+            page: PageState::new(cx),
             snapshot,
             platform,
             detector: GestureDetector::new(bindings, gesture_config),
@@ -260,7 +264,7 @@ impl SettingsView {
 }
 
 impl Render for SettingsView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.shared.borrow();
         let t = style::tokens(state.preferences.theme_mode);
         let sidebar = self.sidebar(cx, &state);
@@ -273,9 +277,18 @@ impl Render for SettingsView {
             .text_color(t.text)
             .bg(t.bg)
             .child(sidebar)
-            // Page content lands with the F2 page ports; the area stays empty
-            // (no placeholder prose: every UI string goes through TextKey).
-            .child(div().flex_1().h_full().bg(t.bg))
+            .child(
+                div()
+                    .id("page-scroll")
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .h_full()
+                    .overflow_scroll()
+                    .bg(t.bg)
+                    .px(px(28.0))
+                    .py(px(22.0))
+                    .child(pages::render(&state, &self.shared, window, cx)),
+            )
     }
 }
 
@@ -292,7 +305,7 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
             }
 
             info!("gpui shell starting");
-            let shared: Shared = Rc::new(RefCell::new(ShellState::new(runtime)));
+            let shared: Shared = Rc::new(RefCell::new(ShellState::new(runtime, cx)));
             window::open_settings(cx, &shared);
 
             let tick_shared = shared.clone();

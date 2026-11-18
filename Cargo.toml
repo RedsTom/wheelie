@@ -18,8 +18,9 @@ eframe = { version = "0.33.3", features = ["wgpu"] }
 egui-phosphor = "0.11"
 enigo = "0.6.1"
 global-hotkey = "0.10"
-gpui-pre = "=0.3.13"
-gpui-pre-platform = "=0.3.13"
+gpui-icons = "0.7.0"
+gpui-pre = "=0.3.12"
+gpui-pre-platform = "=0.3.12"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 single-instance = "0.3.3"

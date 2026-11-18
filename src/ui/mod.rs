@@ -5,9 +5,12 @@
 
 pub mod app;
 pub mod assets;
+pub mod controls;
 pub mod gestures;
 pub mod icons;
+pub mod iconset;
 pub mod overlay;
+pub mod pages;
 pub mod services;
 pub mod settings;
 pub mod shell;

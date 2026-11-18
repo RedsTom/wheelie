@@ -1,24 +1,38 @@
-//! Embedded assets for the gpui shell: icons first, fonts alongside.
+//! Embedded assets for the gpui shell: Lucide icons plus Wheelie extras.
 
 use gpui::{AssetSource, SharedString};
+use gpui_icons::LucideAssetSource;
 use std::borrow::Cow;
 
-/// Asset source backing `svg()` icon lookups.
+/// Asset source backing `svg()` lookups: the Lucide catalog owns
+/// `icons/lucide/`, Wheelie keeps its own files under `icons/`.
 pub struct WheelieAssets;
 
 impl AssetSource for WheelieAssets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
-        Ok(match path {
-            "icons/plus.svg" => Some(Cow::Borrowed(include_bytes!("../../assets/icons/plus.svg"))),
-            _ => None,
-        })
+        match LucideAssetSource.load(path) {
+            Ok(Some(asset)) => Ok(Some(asset)),
+            Ok(None) => Ok(match path {
+                "icons/plus.svg" => {
+                    Some(Cow::Borrowed(include_bytes!("../../assets/icons/plus.svg")))
+                }
+                "logo/logo-2x.png" => Some(Cow::Borrowed(include_bytes!(
+                    "../../assets/logo/logo-2x.png"
+                ))),
+                _ => None,
+            }),
+            Err(error) => Err(error),
+        }
     }
 
     fn list(&self, path: &str) -> anyhow::Result<Vec<SharedString>> {
-        Ok(match path {
-            "icons" => vec![SharedString::from("plus.svg")],
-            _ => Vec::new(),
-        })
+        match path {
+            "icons/lucide" | "icons/lucide/" => LucideAssetSource.list(path),
+            _ => Ok(match path {
+                "icons" => vec![SharedString::from("plus.svg")],
+                _ => Vec::new(),
+            }),
+        }
     }
 }
 

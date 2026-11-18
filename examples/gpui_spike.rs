@@ -96,7 +96,7 @@ fn polar(center: Point<Pixels>, r: f32, a: f32) -> Point<Pixels> {
 }
 
 /// Builds a filled annular sector between angles `a0` and `a1` (radians).
-fn sector(center: Point<Pixels>, r0: f32, r1: f32, a0: f32, a1: f32) -> Path {
+fn sector(center: Point<Pixels>, r0: f32, r1: f32, a0: f32, a1: f32) -> Path<Pixels> {
     let mut builder = PathBuilder::fill();
     builder.move_to(polar(center, r1, a0));
     builder.arc_to(
