@@ -3,6 +3,7 @@
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
 use crate::core::key::KeyChord;
 use crate::core::macro_engine::MacroSink;
+#[cfg(not(target_os = "macos"))]
 use crate::platform::brightness;
 use crate::platform::error::PlatformError;
 use crate::platform::key_map::{to_enigo_key, to_enigo_modifiers};

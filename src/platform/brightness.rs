@@ -6,7 +6,9 @@
 use crate::core::action::VolumeDirection;
 use crate::platform::error::PlatformError;
 
-/// Brightness change applied per step, in percent of the full scale.
+/// Brightness change applied per step, in percent of the full scale. Unused
+/// on macOS, where the brightness keys are sent through `enigo` instead.
+#[cfg(any(target_os = "windows", all(unix, not(target_os = "macos"))))]
 const STEP_PERCENT: u8 = 5;
 
 /// Changes the brightness by `steps` steps. Returns the new level in percent
