@@ -25,10 +25,20 @@ const CAPTURE_IS_LIMITED: bool = true;
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 const CAPTURE_IS_LIMITED: bool = false;
 
-/// `enigo` 0.6.1 only exposes brightness keys on macOS.
-#[cfg(target_os = "macos")]
+/// macOS uses the brightness keys, Windows uses WMI and Linux uses
+/// `brightnessctl`. A display without brightness control reports an error
+/// when the action runs.
+#[cfg(any(
+    target_os = "macos",
+    target_os = "windows",
+    all(unix, not(target_os = "macos"))
+))]
 const BRIGHTNESS_SUPPORTED: bool = true;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    all(unix, not(target_os = "macos"))
+)))]
 const BRIGHTNESS_SUPPORTED: bool = false;
 
 /// Returns the capabilities of the current platform.

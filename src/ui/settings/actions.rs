@@ -6,10 +6,11 @@ use crate::core::{
     Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey,
     WheelGeometry, tr,
 };
+use crate::ui::overlay;
 use crate::ui::settings::{PageContext, warning};
 use crate::ui::{icons, theme, widgets};
 use eframe::egui;
-use egui::{Align2, FontId, Sense, Stroke, Vec2};
+use egui::{Align2, FontId, Sense, Vec2};
 use egui_phosphor::regular as ph;
 use std::path::PathBuf;
 
@@ -215,62 +216,17 @@ fn wheel_preview(ui: &mut egui::Ui, sets: &[ActionSet], selected: Option<usize>)
     let center = rect.min + egui::vec2(geometry.center_x, geometry.center_y);
     let painter = ui.painter().clone();
 
-    let base = egui::Color32::from_rgb(24, 28, 38);
     let hovered = response.hover_pos().and_then(|position| {
         let local = position - rect.min;
         geometry.sector_at(sets.len(), local.x, local.y)
     });
 
-    if sets.is_empty() {
-        painter.circle_filled(center, geometry.outer_radius, base);
-        return None;
-    }
+    overlay::paint_wheel(&painter, center, &geometry, sets, selected, hovered);
 
-    for (index, set) in sets.iter().enumerate() {
-        let Some((start, end)) = geometry.sector_angles(index, sets.len()) else {
-            continue;
-        };
-        let is_selected = selected == Some(index);
-        let fill = if is_selected {
-            theme::ACCENT
-        } else if hovered == Some(index) {
-            egui::Color32::from_rgb(38, 44, 58)
-        } else {
-            base
-        };
-
-        painter.add(egui::Shape::convex_polygon(
-            sector_points(center, &geometry, start, end),
-            fill,
-            Stroke::NONE,
-        ));
-
-        let mid = (start + end) / 2.0;
-        let icon_radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
-        let icon_center = center + egui::vec2(mid.cos(), mid.sin()) * icon_radius;
-        icons::paint(
-            &painter,
-            egui::Rect::from_center_size(icon_center, Vec2::splat(26.0)),
-            set.icon,
-            if is_selected {
-                egui::Color32::WHITE
-            } else {
-                egui::Color32::from_white_alpha(220)
-            },
-        );
-    }
-
-    painter.circle_filled(center, geometry.inner_radius * 0.92, base);
     if let Some(set) = selected
         .and_then(|index| sets.get(index))
         .or_else(|| sets.first())
     {
-        icons::paint(
-            &painter,
-            egui::Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.1)),
-            set.icon,
-            egui::Color32::WHITE,
-        );
         painter.text(
             rect.center_bottom() - egui::vec2(0.0, 8.0),
             Align2::CENTER_BOTTOM,
@@ -286,25 +242,6 @@ fn wheel_preview(ui: &mut egui::Ui, sets: &[ActionSet], selected: Option<usize>)
     let position = response.interact_pointer_pos()?;
     let local = position - rect.min;
     geometry.sector_at(sets.len(), local.x, local.y)
-}
-
-fn sector_points(
-    center: egui::Pos2,
-    geometry: &WheelGeometry,
-    start: f32,
-    end: f32,
-) -> Vec<egui::Pos2> {
-    let steps = ((end - start) / 0.12).ceil().max(4.0) as usize;
-    let mut points = Vec::with_capacity((steps + 1) * 2);
-    for index in 0..=steps {
-        let angle = start + (end - start) * index as f32 / steps as f32;
-        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.outer_radius);
-    }
-    for index in (0..=steps).rev() {
-        let angle = start + (end - start) * index as f32 / steps as f32;
-        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.inner_radius);
-    }
-    points
 }
 
 fn small_icon_button(ui: &mut egui::Ui, glyph: &str, tooltip: &str) -> bool {

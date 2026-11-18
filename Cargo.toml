@@ -2,7 +2,7 @@
 name = "wheelie"
 version = "0.1.3"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.98"
 license = "GPL-3.0-only"
 authors = ["RedsTom"]
 repository = "https://github.com/RedsTom/wheelie"
@@ -18,7 +18,12 @@ eframe = { version = "0.33.3", features = ["wgpu"] }
 egui-phosphor = "0.11"
 enigo = "0.6.1"
 global-hotkey = "0.10"
+gpui-icons = "0.7.0"
+gpui-kit = "0.10"
+gpui-pre = "=0.3.12"
+gpui-pre-platform = "=0.3.12"
 image = { version = "0.25", default-features = false, features = ["png"] }
+raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 single-instance = "0.3.3"
 thiserror = "2"
@@ -27,3 +32,18 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tray-icon = "0.24.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+embed-resource = "3"
+
+[dev-dependencies]

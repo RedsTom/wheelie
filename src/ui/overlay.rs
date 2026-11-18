@@ -1,19 +1,17 @@
-//! Radial wheel drawn in its own transparent, always-on-top viewport.
+//! Radial wheel drawn inside the root window when the overlay is active.
 //!
-//! The wheel shows one sector per action set, with its icon. Confirming a
-//! sector makes that set the active one; the wheel never runs an action
-//! directly.
+//! When the overlay opens, the application shell morphs the root viewport into
+//! a small, undecorated, always-on-top window. The wgpu renderer clears with
+//! alpha=0, so pixels outside the wheel are fully transparent. This module
+//! only paints the wheel geometry; it does not touch window state.
 
 use crate::core::{ActionSet, WheelGeometry};
-use crate::ui::icons;
+use crate::ui::{icons, theme};
 use eframe::egui;
-use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
-/// Size of the overlay viewport, in points.
-pub const OVERLAY_SIZE: f32 = 340.0;
-
-/// Margin kept between the wheel and the viewport edges.
-const WHEEL_MARGIN: f32 = 44.0;
+/// Size of the overlay window in points (width = height).
+pub const OVERLAY_SIZE: f32 = 380.0;
 
 /// What the user did in the overlay this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,24 +66,24 @@ impl OverlayState {
 }
 
 /// Draws the wheel and records the outcome in `state`.
+///
+/// Called on the root context while the window is morphed to overlay size.
+/// Paints with a transparent background so only the wheel geometry is visible.
 pub fn draw(ctx: &egui::Context, sets: &[ActionSet], state: &mut OverlayState) {
+    // Override visuals so the panel fill is transparent; the wheel paints
+    // only its own circular geometry on top of the compositor's alpha=0 clear.
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = Color32::TRANSPARENT;
     visuals.window_fill = Color32::TRANSPARENT;
     visuals.override_text_color = Some(Color32::WHITE);
     ctx.set_visuals(visuals);
 
-    if let Some(command) = egui::ViewportCommand::center_on_screen(ctx) {
-        ctx.send_viewport_cmd(command);
-    }
-
-    if ctx.input(|input| input.key_pressed(egui::Key::Escape))
-        || ctx.input(|input| input.viewport().close_requested())
-    {
+    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
         state.outcome = Some(OverlayOutcome::Close);
     }
 
-    // Clicking another window (or anything that takes focus) closes the wheel.
+    // Focus-loss close: track when the window has had focus at least once,
+    // then close if focus moves away.
     let focused = ctx.input(|input| input.viewport().focused).unwrap_or(true);
     if focused {
         state.focused_once = true;
@@ -97,20 +95,20 @@ pub fn draw(ctx: &egui::Context, sets: &[ActionSet], state: &mut OverlayState) {
         .frame(egui::Frame::NONE.fill(Color32::TRANSPARENT))
         .show(ctx, |ui| {
             let rect = ui.max_rect();
-            let size = (rect.width().min(rect.height()) - WHEEL_MARGIN).max(120.0);
-            let square = Rect::from_center_size(rect.center(), Vec2::splat(size));
+            let size = rect.width().min(rect.height()) * 0.78;
             let geometry = WheelGeometry::from_size(size);
-            let center = square.min + egui::vec2(geometry.center_x, geometry.center_y);
+            let center = rect.center();
+            let local_origin = center - egui::vec2(geometry.center_x, geometry.center_y);
 
             let pointer = ctx.input(|input| input.pointer.hover_pos());
             state.hovered = pointer.and_then(|position| {
-                let local = position - square.min;
+                let local = position - local_origin;
                 geometry.sector_at(sets.len(), local.x, local.y)
             });
 
             if ctx.input(|input| input.pointer.primary_clicked()) {
                 state.outcome = Some(pointer.map_or(OverlayOutcome::Close, |position| {
-                    let local = position - square.min;
+                    let local = position - local_origin;
                     match geometry.sector_at(sets.len(), local.x, local.y) {
                         Some(index) => OverlayOutcome::Confirm(index),
                         None if geometry.is_center(local.x, local.y) => {
@@ -121,56 +119,68 @@ pub fn draw(ctx: &egui::Context, sets: &[ActionSet], state: &mut OverlayState) {
                 }));
             }
 
-            paint(ui, sets, state, &geometry, center, size);
+            paint_wheel(
+                ui.painter(),
+                center,
+                &geometry,
+                sets,
+                Some(state.selected),
+                state.hovered,
+            );
 
-            painter_titles(ui, sets, state, rect);
+            // Label below the wheel, with generous spacing.
+            let text_y = center.y + geometry.outer_radius + 22.0;
+            painter_titles(ui, sets, state, text_y, rect.center().x);
         });
 }
 
-fn paint(
-    ui: &egui::Ui,
-    sets: &[ActionSet],
-    state: &OverlayState,
-    geometry: &WheelGeometry,
+/// Paints the unified radial wheel shared by the on-screen overlay and settings preview.
+pub fn paint_wheel(
+    painter: &egui::Painter,
     center: Pos2,
-    size: f32,
+    geometry: &WheelGeometry,
+    sets: &[ActionSet],
+    selected: Option<usize>,
+    hovered: Option<usize>,
 ) {
-    let painter = ui.painter();
-    let base = Color32::from_rgba_unmultiplied(24, 28, 38, 235);
-    let hovered_fill = Color32::from_rgba_unmultiplied(38, 44, 58, 245);
-    let accent = Color32::from_rgb(75, 139, 255);
+    let base = Color32::from_rgb(24, 28, 38);
+    let hovered_fill = Color32::from_rgb(38, 44, 58);
 
     if sets.is_empty() {
         painter.circle_filled(center, geometry.outer_radius, base);
         return;
     }
 
-    let step = std::f32::consts::TAU / sets.len() as f32;
-    let gap = (step * 0.045).min(0.035);
-
     for (index, set) in sets.iter().enumerate() {
         let Some((start, end)) = geometry.sector_angles(index, sets.len()) else {
             continue;
         };
-        let selected = state.selected == index;
-        let hovered = state.hovered == Some(index);
-        let fill = if selected {
-            accent
-        } else if hovered {
+        let is_selected = selected == Some(index);
+        let fill = if is_selected {
+            theme::ACCENT
+        } else if hovered == Some(index) {
             hovered_fill
         } else {
             base
         };
 
-        let points = sector_points(center, geometry, start + gap, end - gap);
-        painter.add(egui::Shape::convex_polygon(points, fill, Stroke::NONE));
+        paint_sector_mesh(
+            painter,
+            center,
+            geometry.inner_radius,
+            geometry.outer_radius,
+            start,
+            end,
+            fill,
+        );
 
         let mid = (start + end) / 2.0;
         let icon_radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
         let icon_center = center + Vec2::angled(mid) * icon_radius;
-        let icon_side = (size * 0.09).clamp(20.0, 32.0);
-        let icon_rect = Rect::from_center_size(icon_center, Vec2::splat(icon_side));
-        let color = if selected {
+        let icon_size = (geometry.outer_radius - geometry.inner_radius) * 0.45;
+        let icon_rect =
+            Rect::from_center_size(icon_center, Vec2::splat(icon_size.clamp(20.0, 32.0)));
+        let color = if is_selected {
             Color32::WHITE
         } else {
             Color32::from_white_alpha(220)
@@ -178,47 +188,86 @@ fn paint(
         icons::paint(painter, icon_rect, set.icon, color);
     }
 
-    painter.circle_filled(center, geometry.inner_radius * 0.92, base);
-    if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
-        let icon_rect = Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.15));
-        icons::paint(painter, icon_rect, set.icon, Color32::WHITE);
-    }
-}
-
-/// Writes the selected set name once, below the wheel.
-fn painter_titles(ui: &egui::Ui, sets: &[ActionSet], state: &OverlayState, rect: Rect) {
-    let painter = ui.painter();
-    if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
-        painter.text(
-            rect.center_bottom() - egui::vec2(0.0, 14.0),
-            Align2::CENTER_BOTTOM,
-            truncate(&set.name, 32),
-            FontId::proportional(14.0),
+    // Center disc cleanly meeting the sector inner radius
+    painter.circle_filled(center, geometry.inner_radius, base);
+    if let Some(set) = selected.and_then(|i| sets.get(i)).or_else(|| sets.first()) {
+        let center_icon_size = geometry.inner_radius * 1.1;
+        icons::paint(
+            painter,
+            Rect::from_center_size(center, Vec2::splat(center_icon_size)),
+            set.icon,
             Color32::WHITE,
         );
     }
 }
 
-fn sector_points(center: Pos2, geometry: &WheelGeometry, start: f32, end: f32) -> Vec<Pos2> {
-    let steps = ((end - start) / 0.12).ceil().max(4.0) as usize;
-    let mut points = Vec::with_capacity((steps + 1) * 2);
-    for index in 0..=steps {
-        let angle = start + (end - start) * index as f32 / steps as f32;
-        points.push(center + Vec2::angled(angle) * geometry.outer_radius);
+/// Paints an annular sector using a quad-strip triangle mesh.
+///
+/// Avoids naive convex polygon triangulation which creates artifacts on concave annular arcs.
+pub fn paint_sector_mesh(
+    painter: &egui::Painter,
+    center: Pos2,
+    inner_radius: f32,
+    outer_radius: f32,
+    start_angle: f32,
+    end_angle: f32,
+    fill_color: Color32,
+) {
+    if start_angle >= end_angle {
+        return;
     }
-    for index in (0..=steps).rev() {
-        let angle = start + (end - start) * index as f32 / steps as f32;
-        points.push(center + Vec2::angled(angle) * geometry.inner_radius);
+    let sweep = end_angle - start_angle;
+    let steps = ((sweep / 0.08).ceil().max(4.0)) as usize;
+
+    let mut mesh = egui::Mesh::default();
+    mesh.reserve_triangles(steps * 2);
+    mesh.reserve_vertices((steps + 1) * 2);
+
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let angle = start_angle + sweep * t;
+        let dir = Vec2::angled(angle);
+
+        let outer_pos = center + dir * outer_radius;
+        let inner_pos = center + dir * inner_radius;
+
+        mesh.colored_vertex(outer_pos, fill_color);
+        mesh.colored_vertex(inner_pos, fill_color);
     }
-    points
+
+    for i in 0..steps as u32 {
+        let outer_curr = 2 * i;
+        let inner_curr = 2 * i + 1;
+        let outer_next = 2 * (i + 1);
+        let inner_next = 2 * (i + 1) + 1;
+
+        mesh.add_triangle(outer_curr, outer_next, inner_next);
+        mesh.add_triangle(outer_curr, inner_next, inner_curr);
+    }
+
+    painter.add(egui::Shape::mesh(mesh));
 }
 
-fn truncate(text: &str, limit: usize) -> String {
+/// Writes the selected set name below the wheel.
+fn painter_titles(ui: &egui::Ui, sets: &[ActionSet], state: &OverlayState, y: f32, x: f32) {
+    let painter = ui.painter();
+    if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
+        painter.text(
+            Pos2::new(x, y),
+            Align2::CENTER_CENTER,
+            truncate(&set.name, 32),
+            FontId::new(16.0, egui::FontFamily::Name("HeadingSemiBold".into())),
+            Color32::WHITE,
+        );
+    }
+}
+
+pub(crate) fn truncate(text: &str, limit: usize) -> String {
     if text.chars().count() <= limit {
         return text.to_owned();
     }
     let mut truncated: String = text.chars().take(limit.saturating_sub(1)).collect();
-    truncated.push('…');
+    truncated.push('.');
     truncated
 }
 
@@ -261,6 +310,6 @@ mod tests {
         assert_eq!(truncate("short", 10), "short");
         let truncated = truncate("a very long action set name", 10);
         assert_eq!(truncated.chars().count(), 10);
-        assert!(truncated.ends_with('…'));
+        assert!(truncated.ends_with('.'));
     }
 }
