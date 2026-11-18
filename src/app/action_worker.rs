@@ -111,6 +111,9 @@ where
         Action::Volume { direction, steps } => sink
             .volume(*direction, *steps)
             .map_err(|error| error.to_string()),
+        Action::Brightness { direction, steps } => sink
+            .brightness(*direction, *steps)
+            .map_err(|error| error.to_string()),
         Action::Scroll { axis, amount } => {
             InputSink::scroll(sink, *axis, *amount).map_err(|error| error.to_string())
         }

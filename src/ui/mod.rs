@@ -1,6 +1,7 @@
 //! eframe views and reusable widgets for Wheelie.
 
 pub mod app;
+pub mod icons;
 pub mod overlay;
 pub mod settings;
 pub mod theme;

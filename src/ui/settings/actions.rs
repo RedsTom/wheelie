@@ -1,11 +1,14 @@
-//! Actions page: choose what each knob gesture does.
+//! Actions page: manage the action sets shown in the wheel.
 
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
 use crate::core::profile::Actions;
-use crate::core::{Action, Config, Control, KeyChord, KeyCode, Language, TextKey, tr};
-use crate::ui::settings::{PageContext, active_profile_index, warning};
-use crate::ui::{theme, widgets};
+use crate::core::{
+    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey, tr,
+};
+use crate::ui::settings::{PageContext, warning};
+use crate::ui::{icons, theme, widgets};
 use eframe::egui;
+use egui::{Align2, FontId};
 use std::path::PathBuf;
 
 pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
@@ -17,29 +20,192 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
     );
 
     let config = context.runtime.config();
-    let Some(index) = active_profile_index(&config) else {
-        return;
-    };
-
-    let mut actions = config.profiles[index].actions.clone();
+    let mut sets = config.action_sets.clone();
+    let mut active = config.active_set.clone();
     let mut changed = false;
 
-    for control in [Control::Left, Control::Press, Control::Right] {
-        widgets::card(ui, |ui| {
-            if show_control(ui, language, &config, control, &mut actions) {
+    let selection_id = ui.id().with("set-selection");
+    let mut selected = ui
+        .data(|data| data.get_temp::<usize>(selection_id))
+        .filter(|index| *index < sets.len());
+    if selected.is_none() && !sets.is_empty() {
+        selected = Some(0);
+    }
+
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.set_width(220.0);
+            if widgets::secondary_button(ui, tr(language, TextKey::AddSetButton)).clicked() {
+                sets.push(new_set(&sets, language));
+                selected = Some(sets.len() - 1);
                 changed = true;
             }
+
+            ui.add_space(10.0);
+            if sets.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr(language, TextKey::EmptyActionsBody))
+                        .size(12.0)
+                        .color(theme::muted(ui)),
+                );
+            } else {
+                for (index, set) in sets.iter().enumerate() {
+                    let is_active = active.as_deref() == Some(set.id.as_str());
+                    if set_row(ui, set, selected == Some(index), is_active) {
+                        selected = Some(index);
+                    }
+                }
+            }
+
+            if let Some(index) = selected {
+                ui.add_space(10.0);
+                if widgets::secondary_button(ui, tr(language, TextKey::DeleteSetButton)).clicked() {
+                    let removed = sets.remove(index);
+                    if active.as_deref() == Some(removed.id.as_str()) {
+                        active = sets.first().map(|set| set.id.clone());
+                    }
+                    selected = if sets.is_empty() {
+                        None
+                    } else {
+                        Some(index.min(sets.len() - 1))
+                    };
+                    changed = true;
+                }
+            }
         });
-        ui.add_space(10.0);
+
+        ui.add_space(16.0);
+
+        ui.vertical(|ui| {
+            if let Some(index) = selected
+                && let Some(set) = sets.get_mut(index)
+            {
+                let is_active = active.as_deref() == Some(set.id.as_str());
+                if editor(ui, language, &config, set, is_active) {
+                    changed = true;
+                }
+            }
+        });
+    });
+
+    if let Some(index) = selected {
+        ui.data_mut(|data| data.insert_temp(selection_id, index));
     }
 
     if changed {
-        let result = context
-            .runtime
-            .update_config(|config| config.profiles[index].actions = actions.clone());
+        let result = context.runtime.update_config(|config| {
+            config.action_sets = sets;
+            let keep = active
+                .filter(|id| config.action_sets.iter().any(|set| &set.id == id))
+                .or_else(|| config.action_sets.first().map(|set| set.id.clone()));
+            config.active_set = keep;
+        });
         if let Err(error) = result {
             warning(ui, &error.to_string());
         }
+    }
+}
+
+fn editor(
+    ui: &mut egui::Ui,
+    language: Language,
+    config: &Config,
+    set: &mut ActionSet,
+    is_active: bool,
+) -> bool {
+    let mut changed = false;
+
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(tr(language, TextKey::SetNameLabel))
+                .size(12.5)
+                .color(theme::muted(ui)),
+        );
+        let mut name = set.name.clone();
+        if ui
+            .add(egui::TextEdit::singleline(&mut name).desired_width(220.0))
+            .changed()
+        {
+            set.name = name;
+            changed = true;
+        }
+        if is_active {
+            ui.add_space(6.0);
+            widgets::status_pill(ui, tr(language, TextKey::ActiveSetLabel), theme::SUCCESS);
+        }
+    });
+
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(tr(language, TextKey::SetIconLabel))
+            .size(12.5)
+            .color(theme::muted(ui)),
+    );
+    ui.add_space(4.0);
+    changed |= icons::picker(ui, &mut set.icon);
+
+    for control in [Control::Left, Control::Press, Control::Right] {
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(8.0);
+        changed |= show_control(ui, language, config, control, &mut set.actions);
+    }
+
+    changed
+}
+
+fn set_row(ui: &mut egui::Ui, set: &ActionSet, selected: bool, active: bool) -> bool {
+    let width = ui.available_width();
+    let height = theme::CONTROL_HEIGHT + 6.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let painter = ui.painter().clone();
+
+    if selected {
+        painter.rect_filled(rect, 4, theme::accent_soft());
+    } else if response.hovered() {
+        painter.rect_filled(rect, 4, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+
+    let color = if selected {
+        theme::accent(ui)
+    } else {
+        ui.visuals().widgets.inactive.fg_stroke.color
+    };
+    let icon_rect = egui::Rect::from_center_size(
+        rect.left_center() + egui::vec2(18.0, 0.0),
+        egui::Vec2::splat(18.0),
+    );
+    icons::paint(&painter, icon_rect, set.icon, color);
+    painter.text(
+        rect.left_center() + egui::vec2(36.0, 0.0),
+        Align2::LEFT_CENTER,
+        &set.name,
+        FontId::proportional(13.5),
+        color,
+    );
+    if active {
+        painter.circle_filled(
+            rect.right_center() - egui::vec2(14.0, 0.0),
+            4.0,
+            theme::SUCCESS,
+        );
+    }
+
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+}
+
+fn new_set(sets: &[ActionSet], language: Language) -> ActionSet {
+    let base = tr(language, TextKey::SetDefaultName);
+    let mut number = 1;
+    loop {
+        let name = format!("{base} {number}");
+        let id = format!("set-{number}");
+        if !sets.iter().any(|set| set.name == name || set.id == id) {
+            return ActionSet::new(id, name, SetIcon::Star);
+        }
+        number += 1;
     }
 }
 
@@ -47,6 +213,7 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
 enum Kind {
     None,
     Volume,
+    Brightness,
     Scroll,
     Macro,
     Shortcut,
@@ -56,9 +223,10 @@ enum Kind {
 }
 
 impl Kind {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::None,
         Self::Volume,
+        Self::Brightness,
         Self::Scroll,
         Self::Macro,
         Self::Shortcut,
@@ -71,6 +239,7 @@ impl Kind {
         match action {
             Action::None => Self::None,
             Action::Volume { .. } => Self::Volume,
+            Action::Brightness { .. } => Self::Brightness,
             Action::Scroll { .. } => Self::Scroll,
             Action::Macro { .. } => Self::Macro,
             Action::Shortcut { .. } => Self::Shortcut,
@@ -84,6 +253,7 @@ impl Kind {
         match self {
             Self::None => tr(language, TextKey::ActionNone),
             Self::Volume => tr(language, TextKey::ActionKindVolume),
+            Self::Brightness => tr(language, TextKey::ActionKindBrightness),
             Self::Scroll => tr(language, TextKey::ActionKindScroll),
             Self::Macro => tr(language, TextKey::ActionKindMacro),
             Self::Shortcut => tr(language, TextKey::ActionKindShortcut),
@@ -97,6 +267,10 @@ impl Kind {
         match self {
             Self::None => Action::None,
             Self::Volume => Action::Volume {
+                direction: VolumeDirection::Up,
+                steps: 1,
+            },
+            Self::Brightness => Action::Brightness {
                 direction: VolumeDirection::Up,
                 steps: 1,
             },
@@ -143,7 +317,7 @@ fn show_control(
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new(control_label(language, control))
-                .font(theme::heading_font(14.0))
+                .font(theme::heading_font(13.5))
                 .color(theme::card_text(ui)),
         );
 
@@ -151,7 +325,7 @@ fn show_control(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             egui::ComboBox::from_id_salt(("action-kind", control_key))
                 .selected_text(kind.label(language))
-                .width(180.0)
+                .width(170.0)
                 .show_ui(ui, |ui| {
                     for option in Kind::ALL {
                         ui.selectable_value(&mut kind, option, option.label(language));
@@ -159,23 +333,14 @@ fn show_control(
                 });
         });
         if kind != Kind::of(actions.for_control(control)) {
-            let action = kind.default_action(config);
-            match control {
-                Control::Left => actions.left = action,
-                Control::Right => actions.right = action,
-                Control::Press => actions.press = action,
-            }
+            *actions.for_control_mut(control) = kind.default_action(config);
             changed = true;
         }
     });
 
-    ui.add_space(8.0);
+    ui.add_space(6.0);
 
-    let action = match control {
-        Control::Left => &mut actions.left,
-        Control::Right => &mut actions.right,
-        Control::Press => &mut actions.press,
-    };
+    let action = actions.for_control_mut(control);
     changed |= parameters(ui, language, config, control_key, action);
     changed
 }
@@ -197,10 +362,10 @@ fn parameters(
                     .color(theme::muted(ui)),
             );
         }
-        Action::Volume { direction, steps } => {
+        Action::Volume { direction, steps } | Action::Brightness { direction, steps } => {
             ui.horizontal_wrapped(|ui| {
                 muted_label(ui, language, TextKey::ActionDirection);
-                egui::ComboBox::from_id_salt(("volume-direction", key))
+                egui::ComboBox::from_id_salt(("amount-direction", key))
                     .selected_text(direction_label(language, *direction))
                     .width(130.0)
                     .show_ui(ui, |ui| {
@@ -376,5 +541,36 @@ fn media_label(language: Language, command: MediaCommand) -> &'static str {
         MediaCommand::Next => tr(language, TextKey::ActionMediaNext),
         MediaCommand::Previous => tr(language, TextKey::ActionMediaPrevious),
         MediaCommand::Stop => tr(language, TextKey::ActionMediaStop),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_have_unique_names_and_ids() {
+        let mut sets = Vec::new();
+        for _ in 0..3 {
+            let set = new_set(&sets, Language::En);
+            sets.push(set);
+        }
+        assert_eq!(sets[0].id, "set-1");
+        assert_eq!(sets[1].id, "set-2");
+        assert_eq!(sets[2].name, "Set 3");
+    }
+
+    #[test]
+    fn kind_round_trips_every_action() {
+        let mut config = Config::default();
+        config.macros.push(crate::core::MacroDefinition {
+            name: "macro".to_owned(),
+            steps: vec![crate::core::MacroStep::Delay { ms: 0 }],
+        });
+
+        for kind in Kind::ALL {
+            let action = kind.default_action(&config);
+            assert_eq!(Kind::of(&action), kind, "kind mismatch for {kind:?}");
+        }
     }
 }

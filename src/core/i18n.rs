@@ -195,6 +195,19 @@ pub enum TextKey {
     LinuxCaptureNotice,
     WindowsElevatedNotice,
     SettingsFileLabel,
+    ActionBrightnessUp,
+    ActionBrightnessDown,
+    ActionKindBrightness,
+    SetVolume,
+    SetBrightness,
+    SetScroll,
+    ActiveSetLabel,
+    AddSetButton,
+    DeleteSetButton,
+    SetNameLabel,
+    SetIconLabel,
+    SetDefaultName,
+    NoSetLabel,
 }
 
 impl TextKey {
@@ -337,6 +350,19 @@ impl TextKey {
         Self::LinuxCaptureNotice,
         Self::WindowsElevatedNotice,
         Self::SettingsFileLabel,
+        Self::ActionBrightnessUp,
+        Self::ActionBrightnessDown,
+        Self::ActionKindBrightness,
+        Self::SetVolume,
+        Self::SetBrightness,
+        Self::SetScroll,
+        Self::ActiveSetLabel,
+        Self::AddSetButton,
+        Self::DeleteSetButton,
+        Self::SetNameLabel,
+        Self::SetIconLabel,
+        Self::SetDefaultName,
+        Self::NoSetLabel,
     ];
 }
 
@@ -396,8 +422,8 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::ActionsSubtitle,
-        fr: "Choisissez ce que fait chaque geste du knob.",
-        en: "Choose what each knob gesture does.",
+        fr: "Créez les groupes d'actions affichés dans la roue et choisissez ce que fait chaque geste.",
+        en: "Create the action sets shown in the wheel and choose what each gesture does.",
     },
     Translation {
         key: TextKey::MacrosSubtitle,
@@ -541,8 +567,8 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::EmptyActionsBody,
-        fr: "Choisissez une action de volume, de défilement, de macro, de raccourci, de souris ou de lancement pour chaque geste.",
-        en: "Choose a volume, scroll, macro, shortcut, mouse or launch action for each gesture.",
+        fr: "Ajoutez un groupe d'actions : il apparaîtra dans la roue avec son icône.",
+        en: "Add an action set: it appears in the wheel with its icon.",
     },
     Translation {
         key: TextKey::EmptyMacrosTitle,
@@ -1033,6 +1059,71 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::SettingsFileLabel,
         fr: "Fichier de réglages",
         en: "Settings file",
+    },
+    Translation {
+        key: TextKey::ActionBrightnessUp,
+        fr: "Luminosité +",
+        en: "Brightness up",
+    },
+    Translation {
+        key: TextKey::ActionBrightnessDown,
+        fr: "Luminosité −",
+        en: "Brightness down",
+    },
+    Translation {
+        key: TextKey::ActionKindBrightness,
+        fr: "Luminosité",
+        en: "Brightness",
+    },
+    Translation {
+        key: TextKey::SetVolume,
+        fr: "Volume",
+        en: "Volume",
+    },
+    Translation {
+        key: TextKey::SetBrightness,
+        fr: "Luminosité",
+        en: "Brightness",
+    },
+    Translation {
+        key: TextKey::SetScroll,
+        fr: "Défilement",
+        en: "Scroll",
+    },
+    Translation {
+        key: TextKey::ActiveSetLabel,
+        fr: "Groupe actif",
+        en: "Active set",
+    },
+    Translation {
+        key: TextKey::AddSetButton,
+        fr: "Nouveau groupe",
+        en: "New set",
+    },
+    Translation {
+        key: TextKey::DeleteSetButton,
+        fr: "Supprimer le groupe",
+        en: "Delete set",
+    },
+    Translation {
+        key: TextKey::SetNameLabel,
+        fr: "Nom du groupe",
+        en: "Set name",
+    },
+    Translation {
+        key: TextKey::SetIconLabel,
+        fr: "Icône",
+        en: "Icon",
+    },
+    Translation {
+        key: TextKey::SetDefaultName,
+        fr: "Groupe",
+        en: "Set",
+    },
+    Translation {
+        key: TextKey::NoSetLabel,
+        fr: "Aucun groupe sélectionné",
+        en: "No set selected",
     },
 ];
 

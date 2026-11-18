@@ -1,66 +1,62 @@
 //! Radial wheel drawn in its own transparent, always-on-top viewport.
 //!
-//! The wheel uses the pure geometry from `core::wheel` for hit testing, so knob
-//! and mouse navigation select the same segments.
+//! The wheel shows one sector per action set, with its icon. Confirming a
+//! sector makes that set the active one; the wheel never runs an action
+//! directly.
 
-use crate::core::profile::Actions;
-use crate::core::{Control, Language, TextKey, WheelGeometry, WheelSegment, tr};
+use crate::core::{ActionSet, Language, TextKey, WheelGeometry, tr};
+use crate::ui::icons;
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 /// Size of the overlay viewport, in points.
-pub const OVERLAY_SIZE: f32 = 420.0;
+pub const OVERLAY_SIZE: f32 = 460.0;
 
 /// What the user did in the overlay this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayOutcome {
-    /// The overlay should close without running an action.
+    /// The overlay should close without changing the active set.
     Close,
-    /// Run the action of the selected control and close.
-    Confirm(Control),
+    /// Make the set at this index the active one.
+    Confirm(usize),
 }
 
 /// Transient overlay state owned by the application shell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct OverlayState {
     /// Whether the overlay is currently shown.
     pub open: bool,
     /// Knob-driven selection.
-    pub selection: Control,
-    /// Segment currently under the mouse.
-    pub hovered: Option<WheelSegment>,
+    pub selected: usize,
+    /// Sector currently under the mouse.
+    pub hovered: Option<usize>,
     /// Outcome of the last frame, consumed by the shell.
     pub outcome: Option<OverlayOutcome>,
 }
 
-impl Default for OverlayState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            selection: Control::Press,
-            hovered: None,
-            outcome: None,
-        }
-    }
-}
-
 impl OverlayState {
-    /// Moves the knob selection one segment to the left.
-    pub fn select_previous(&mut self) {
-        self.selection = match self.selection {
-            Control::Left => Control::Right,
-            Control::Press => Control::Left,
-            Control::Right => Control::Press,
-        };
+    /// Opens the overlay on the active set.
+    pub fn open_on(&mut self, index: usize, count: usize) {
+        self.open = true;
+        self.selected = index.min(count.saturating_sub(1));
+        self.hovered = None;
+        self.outcome = None;
     }
 
-    /// Moves the knob selection one segment to the right.
-    pub fn select_next(&mut self) {
-        self.selection = match self.selection {
-            Control::Left => Control::Press,
-            Control::Press => Control::Right,
-            Control::Right => Control::Left,
-        };
+    /// Moves the knob selection one set to the left.
+    pub fn select_previous(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.selected = (self.selected + count - 1) % count;
+    }
+
+    /// Moves the knob selection one set to the right.
+    pub fn select_next(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.selected = (self.selected + 1) % count;
     }
 }
 
@@ -79,7 +75,7 @@ pub fn viewport_builder() -> egui::ViewportBuilder {
 }
 
 /// Draws the wheel and records the outcome in `state`.
-pub fn draw(ctx: &egui::Context, language: Language, actions: &Actions, state: &mut OverlayState) {
+pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: &mut OverlayState) {
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = Color32::TRANSPARENT;
     visuals.window_fill = Color32::TRANSPARENT;
@@ -106,119 +102,113 @@ pub fn draw(ctx: &egui::Context, language: Language, actions: &Actions, state: &
             let pointer = ctx.input(|input| input.pointer.hover_pos());
             state.hovered = pointer.and_then(|position| {
                 let local = position - square.min;
-                geometry.hit_test(local.x, local.y)
+                geometry.sector_at(sets.len(), local.x, local.y)
             });
 
             if ctx.input(|input| input.pointer.primary_clicked()) {
-                state.outcome = Some(match state.hovered {
-                    Some(segment) => OverlayOutcome::Confirm(control_of(segment)),
-                    None => OverlayOutcome::Close,
-                });
+                state.outcome = Some(pointer.map_or(OverlayOutcome::Close, |position| {
+                    let local = position - square.min;
+                    match geometry.sector_at(sets.len(), local.x, local.y) {
+                        Some(index) => OverlayOutcome::Confirm(index),
+                        None if geometry.is_center(local.x, local.y) => {
+                            OverlayOutcome::Confirm(state.selected)
+                        }
+                        None => OverlayOutcome::Close,
+                    }
+                }));
             }
 
-            let painter = ui.painter();
-            let border = Stroke::new(1.5_f32, Color32::from_white_alpha(46));
-            let half_pi = std::f32::consts::FRAC_PI_2;
+            paint(ui, sets, state, &geometry, center, size);
 
-            paint_segment(
-                painter,
-                center,
-                &geometry,
-                half_pi,
-                3.0 * half_pi,
-                segment_color(state, WheelSegment::Left),
-                border,
-            );
-            paint_segment(
-                painter,
-                center,
-                &geometry,
-                -half_pi,
-                half_pi,
-                segment_color(state, WheelSegment::Right),
-                border,
-            );
-
-            let press_color = segment_color(state, WheelSegment::Press);
-            painter.circle_filled(center, geometry.inner_radius, press_color);
-            painter.circle_stroke(center, geometry.inner_radius, border);
-
-            let label_font = FontId::proportional(13.0);
-            let center_font = FontId::proportional(12.0);
-            let slot = (geometry.inner_radius + geometry.outer_radius) / 2.0;
-
-            label(
-                painter,
-                center - egui::vec2(slot, 0.0),
-                actions.left.describe(language),
-                label_font.clone(),
-            );
-            label(
-                painter,
-                center + egui::vec2(slot, 0.0),
-                actions.right.describe(language),
-                label_font,
-            );
-            label(
-                painter,
-                center,
-                actions.press.describe(language),
-                center_font,
-            );
-
-            painter.text(
-                rect.center_bottom() - egui::vec2(0.0, 18.0),
-                Align2::CENTER_BOTTOM,
-                tr(language, TextKey::OverlayHint),
-                FontId::proportional(11.0),
-                Color32::from_white_alpha(170),
-            );
+            painter_hint(ui, rect, language);
         });
 }
 
-fn control_of(segment: WheelSegment) -> Control {
-    match segment {
-        WheelSegment::Left => Control::Left,
-        WheelSegment::Right => Control::Right,
-        WheelSegment::Press => Control::Press,
-    }
-}
-
-fn segment_color(state: &OverlayState, segment: WheelSegment) -> Color32 {
-    let selected = control_of(segment) == state.selection;
-    let hovered = state.hovered == Some(segment);
-    if selected || hovered {
-        Color32::from_rgba_unmultiplied(75, 139, 255, 240)
-    } else {
-        Color32::from_rgba_unmultiplied(22, 26, 36, 235)
-    }
-}
-
-fn paint_segment(
-    painter: &egui::Painter,
-    center: Pos2,
+fn paint(
+    ui: &egui::Ui,
+    sets: &[ActionSet],
+    state: &OverlayState,
     geometry: &WheelGeometry,
-    start: f32,
-    end: f32,
-    fill: Color32,
-    stroke: Stroke,
+    center: Pos2,
+    size: f32,
 ) {
-    const STEPS: usize = 28;
-    let mut points = Vec::with_capacity((STEPS + 1) * 2);
-    for index in 0..=STEPS {
-        let angle = start + (end - start) * index as f32 / STEPS as f32;
-        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.outer_radius);
+    let painter = ui.painter();
+    let border = Stroke::new(1.5_f32, Color32::from_white_alpha(46));
+    let base = Color32::from_rgba_unmultiplied(22, 26, 36, 238);
+    let accent = Color32::from_rgba_unmultiplied(75, 139, 255, 242);
+
+    if sets.is_empty() {
+        painter.circle_filled(center, geometry.outer_radius, base);
+        painter.circle_stroke(center, geometry.outer_radius, border);
     }
-    for index in (0..=STEPS).rev() {
-        let angle = start + (end - start) * index as f32 / STEPS as f32;
-        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.inner_radius);
+
+    for (index, set) in sets.iter().enumerate() {
+        let Some((start, end)) = geometry.sector_angles(index, sets.len()) else {
+            continue;
+        };
+        let selected = state.selected == index;
+        let hovered = state.hovered == Some(index);
+        let fill = if selected || hovered { accent } else { base };
+
+        let points = sector_points(center, geometry, start, end);
+        painter.add(egui::Shape::convex_polygon(points, fill, border));
+
+        let mid = (start + end) / 2.0;
+        let icon_radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
+        let icon_center = center + Vec2::angled(mid) * icon_radius;
+        let icon_side = (size * 0.075).clamp(18.0, 34.0);
+        let icon_rect = Rect::from_center_size(icon_center, Vec2::splat(icon_side));
+        icons::paint(painter, icon_rect, set.icon, Color32::WHITE);
+
+        let label_radius = icon_radius + icon_side * 0.9;
+        let label_position = center + Vec2::angled(mid) * label_radius;
+        painter.text(
+            label_position,
+            Align2::CENTER_CENTER,
+            truncate(&set.name, label_capacity(sets.len())),
+            FontId::proportional(11.5),
+            Color32::WHITE,
+        );
     }
-    painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+
+    painter.circle_filled(center, geometry.inner_radius, accent);
+    painter.circle_stroke(center, geometry.inner_radius, border);
+    if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
+        let icon_rect = Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.1));
+        icons::paint(painter, icon_rect, set.icon, Color32::WHITE);
+    }
 }
 
-fn label(painter: &egui::Painter, position: Pos2, text: String, font: FontId) {
-    let text = truncate(&text, 26);
-    painter.text(position, Align2::CENTER_CENTER, text, font, Color32::WHITE);
+fn painter_hint(ui: &egui::Ui, rect: Rect, language: Language) {
+    ui.painter().text(
+        rect.center_bottom() - egui::vec2(0.0, 18.0),
+        Align2::CENTER_BOTTOM,
+        tr(language, TextKey::OverlayHint),
+        FontId::proportional(11.0),
+        Color32::from_white_alpha(170),
+    );
+}
+
+fn sector_points(center: Pos2, geometry: &WheelGeometry, start: f32, end: f32) -> Vec<Pos2> {
+    let steps = ((end - start) / 0.12).ceil().max(4.0) as usize;
+    let mut points = Vec::with_capacity((steps + 1) * 2);
+    for index in 0..=steps {
+        let angle = start + (end - start) * index as f32 / steps as f32;
+        points.push(center + Vec2::angled(angle) * geometry.outer_radius);
+    }
+    for index in (0..=steps).rev() {
+        let angle = start + (end - start) * index as f32 / steps as f32;
+        points.push(center + Vec2::angled(angle) * geometry.inner_radius);
+    }
+    points
+}
+
+fn label_capacity(count: usize) -> usize {
+    match count {
+        0..=3 => 26,
+        4..=6 => 18,
+        _ => 12,
+    }
 }
 
 fn truncate(text: &str, limit: usize) -> String {
@@ -235,36 +225,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn selection_cycles_through_the_three_segments() {
+    fn selection_cycles_through_the_sets() {
         let mut state = OverlayState::default();
-        assert_eq!(state.selection, Control::Press);
+        state.open_on(1, 3);
+        assert_eq!(state.selected, 1);
 
-        state.select_next();
-        assert_eq!(state.selection, Control::Right);
-        state.select_next();
-        assert_eq!(state.selection, Control::Left);
-        state.select_next();
-        assert_eq!(state.selection, Control::Press);
-
-        state.select_previous();
-        assert_eq!(state.selection, Control::Left);
-        state.select_previous();
-        assert_eq!(state.selection, Control::Right);
-        state.select_previous();
-        assert_eq!(state.selection, Control::Press);
+        state.select_next(3);
+        assert_eq!(state.selected, 2);
+        state.select_next(3);
+        assert_eq!(state.selected, 0);
+        state.select_previous(3);
+        assert_eq!(state.selected, 2);
     }
 
     #[test]
-    fn segments_map_to_controls() {
-        assert_eq!(control_of(WheelSegment::Left), Control::Left);
-        assert_eq!(control_of(WheelSegment::Right), Control::Right);
-        assert_eq!(control_of(WheelSegment::Press), Control::Press);
+    fn empty_wheel_ignores_navigation() {
+        let mut state = OverlayState::default();
+        state.open_on(0, 0);
+        state.select_next(0);
+        state.select_previous(0);
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn opening_on_a_stale_index_is_clamped() {
+        let mut state = OverlayState::default();
+        state.open_on(9, 3);
+        assert_eq!(state.selected, 2);
     }
 
     #[test]
     fn long_labels_are_truncated() {
         assert_eq!(truncate("short", 10), "short");
-        let truncated = truncate("a very long action label indeed", 10);
+        let truncated = truncate("a very long action set name", 10);
         assert_eq!(truncated.chars().count(), 10);
         assert!(truncated.ends_with('…'));
     }

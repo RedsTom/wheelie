@@ -5,6 +5,7 @@
 //! actions, macros, gesture detection, profiles and wheel geometry.
 
 pub mod action;
+pub mod action_set;
 pub mod app_info;
 pub mod config;
 pub mod gesture;
@@ -17,6 +18,9 @@ pub mod theme;
 pub mod wheel;
 
 pub use action::{Action, MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
+pub use action_set::{
+    ActionSet, BRIGHTNESS_SET_ID, SCROLL_SET_ID, SetIcon, VOLUME_SET_ID, default_sets,
+};
 pub use app_info::{APP_ID, APP_NAME, REPOSITORY_URL, VERSION};
 pub use config::{CONFIG_VERSION, Config, ConfigError, GeneralConfig};
 pub use gesture::{Bindings, Control, GestureConfig, GestureDetector, GestureEvent, InputEvent};
@@ -26,4 +30,4 @@ pub use macro_engine::{MacroDefinition, MacroSink, MacroStep, run_macro};
 pub use platform::{CaptureMode, PlatformInfo};
 pub use profile::{Actions, Profile};
 pub use theme::ThemeMode;
-pub use wheel::{WheelGeometry, WheelSegment};
+pub use wheel::WheelGeometry;

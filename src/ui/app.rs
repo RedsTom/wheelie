@@ -26,6 +26,7 @@ use tracing::{info, warn};
 /// Runs the native eframe loop.
 pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
+        renderer: eframe::Renderer::Wgpu,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1180.0, 760.0])
             .with_min_inner_size([960.0, 620.0])
@@ -283,14 +284,16 @@ impl WheelieApp {
             GestureEvent::DoublePress => self.open_overlay(),
             GestureEvent::RotateLeft => {
                 if self.overlay.open {
-                    self.overlay.select_previous();
+                    let count = self.runtime.config().action_sets.len();
+                    self.overlay.select_previous(count);
                 } else {
                     self.execute(Control::Left);
                 }
             }
             GestureEvent::RotateRight => {
                 if self.overlay.open {
-                    self.overlay.select_next();
+                    let count = self.runtime.config().action_sets.len();
+                    self.overlay.select_next(count);
                 } else {
                     self.execute(Control::Right);
                 }
@@ -309,10 +312,17 @@ impl WheelieApp {
         if self.overlay.open {
             return;
         }
-        self.overlay.open = true;
-        self.overlay.selection = Control::Press;
-        self.overlay.hovered = None;
-        self.overlay.outcome = None;
+        let config = self.runtime.config();
+        let count = config.action_sets.len();
+        if count == 0 {
+            return;
+        }
+        let index = config
+            .active_set
+            .as_deref()
+            .and_then(|id| config.action_sets.iter().position(|set| set.id == id))
+            .unwrap_or(0);
+        self.overlay.open_on(index, count);
         self.detector.set_overlay_open(true);
     }
 
@@ -326,17 +336,36 @@ impl WheelieApp {
     }
 
     fn confirm_overlay(&mut self) {
-        let control = self.overlay.selection;
+        let index = self.overlay.selected;
+        self.activate_set(index);
         self.close_overlay();
-        self.execute(control);
+    }
+
+    /// Makes the set at `index` the active one. The wheel never runs actions.
+    fn activate_set(&mut self, index: usize) {
+        let Some(id) = self
+            .runtime
+            .config()
+            .action_sets
+            .get(index)
+            .map(|set| set.id.clone())
+        else {
+            return;
+        };
+        if let Err(error) = self
+            .runtime
+            .update_config(|config| config.active_set = Some(id))
+        {
+            self.runtime.report_error(error.to_string());
+        }
     }
 
     fn execute(&mut self, control: Control) {
         let config = self.runtime.config();
-        let Some(profile) = config.active_profile() else {
+        let Some(set) = config.active_set_or_first() else {
             return;
         };
-        let action = profile.actions.for_control(control).clone();
+        let action = set.actions.for_control(control).clone();
         if let Err(error) = self.runtime.execute(action) {
             self.runtime.report_error(error.to_string());
         }
@@ -407,12 +436,12 @@ impl WheelieApp {
         }
     }
 
-    fn profile_name(&self) -> String {
+    fn active_set_name(&self) -> String {
         let config = self.runtime.config();
         let language = self.preferences.language;
-        match config.active_profile() {
-            Some(profile) => profile.name.clone(),
-            None => tr(language, TextKey::NoProfileLabel).to_owned(),
+        match config.active_set_or_first() {
+            Some(set) => set.name.clone(),
+            None => tr(language, TextKey::NoSetLabel).to_owned(),
         }
     }
 
@@ -447,7 +476,7 @@ impl WheelieApp {
 
         ui.add_space((ui.available_height() - 118.0).max(12.0));
 
-        let profile = self.profile_name();
+        let profile = self.active_set_name();
         let (state, state_color) = settings::state_label(language, self.snapshot.state);
 
         egui::Frame::NONE
@@ -463,7 +492,7 @@ impl WheelieApp {
                     });
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new(tr(language, TextKey::ActiveProfileLabel))
+                        RichText::new(tr(language, TextKey::ActiveSetLabel))
                             .size(10.0)
                             .color(theme::muted(ui)),
                     );
@@ -544,24 +573,19 @@ impl WheelieApp {
             return;
         }
 
-        let actions = self
-            .runtime
-            .config()
-            .active_profile()
-            .map(|profile| profile.actions.clone())
-            .unwrap_or_default();
+        let sets = self.runtime.config().action_sets;
         let language = self.preferences.language;
         let id = overlay_viewport_id();
 
         ctx.show_viewport_immediate(id, overlay::viewport_builder(), |overlay_ctx, _class| {
-            overlay::draw(overlay_ctx, language, &actions, &mut self.overlay);
+            overlay::draw(overlay_ctx, language, &sets, &mut self.overlay);
         });
 
         match self.overlay.outcome.take() {
             Some(OverlayOutcome::Close) => self.close_overlay(),
-            Some(OverlayOutcome::Confirm(control)) => {
+            Some(OverlayOutcome::Confirm(index)) => {
+                self.activate_set(index);
                 self.close_overlay();
-                self.execute(control);
             }
             None => {}
         }

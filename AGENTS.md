@@ -83,9 +83,13 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 - A single click is delayed by 350 ms so a double-click cannot also fire the
   single-click action.
 - Rotation is immediate with debounce.
-- Overlay: left/right/press sectors, action picker, knob or mouse navigation, Esc
-  closes.
-- Actions: volume, scroll, macro, shortcut, mouse click, launch app.
+- The overlay shows one sector per action set with its icon. Confirming a sector
+  makes that set the active one; the wheel never runs an action itself. Knob or
+  mouse navigation, Esc closes.
+- Outside the wheel, the three controls run the actions of the active set.
+- Action sets: default volume, brightness and scroll sets; users add sets, name
+  them and pick an icon. Actions: volume, brightness, scroll, macro, shortcut,
+  mouse click, media, launch app.
 - Macros: typed steps (key/tap, text, delay, mouse click, scroll); no script DSL.
 - No arbitrary shell execution.
 
@@ -104,8 +108,10 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
   the window event loop, lazily from the first `update()`. On Linux the tray needs
   a GTK main loop that eframe does not provide: attempt creation, log failures and
   continue without a tray icon, never panic.
-- Volume via `enigo` media keys; scroll via `enigo` wheel. Do not add
-  platform-specific audio code unless `enigo` proves insufficient.
+- Volume via `enigo` media keys; scroll via `enigo` wheel. Brightness uses
+  `enigo` brightness keys, which only exist on macOS in 0.6.1; report the action
+  as unavailable elsewhere instead of adding platform audio/display code.
+- Do not add platform-specific audio code unless `enigo` proves insufficient.
 - The app must stay usable with no knob configured: settings and tray still work.
 
 ## Conventions

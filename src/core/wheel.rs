@@ -1,16 +1,5 @@
 //! Radial wheel geometry used by the overlay.
 
-/// Segment of the radial wheel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum WheelSegment {
-    /// Left half: rotate left.
-    Left,
-    /// Right half: rotate right.
-    Right,
-    /// Center circle: press.
-    Press,
-}
-
 /// Radial wheel geometry in plain coordinates, independent from any UI crate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WheelGeometry {
@@ -20,7 +9,7 @@ pub struct WheelGeometry {
     pub center_y: f32,
     /// Radius of the outer ring.
     pub outer_radius: f32,
-    /// Radius of the center press circle.
+    /// Radius of the center circle.
     pub inner_radius: f32,
 }
 
@@ -38,7 +27,7 @@ impl WheelGeometry {
     /// Creates geometry for a square of the given size, centered on it.
     pub fn from_size(size: f32) -> Self {
         let half = size / 2.0;
-        Self::new(half, half, half * 0.92, half * 0.34)
+        Self::new(half, half, half * 0.92, half * 0.36)
     }
 
     /// Returns true when the point is inside the outer radius.
@@ -46,21 +35,55 @@ impl WheelGeometry {
         self.distance_to(x, y) <= self.outer_radius
     }
 
-    /// Returns the segment under a point, or `None` outside the wheel.
-    pub fn hit_test(&self, x: f32, y: f32) -> Option<WheelSegment> {
-        let distance = self.distance_to(x, y);
-        if distance > self.outer_radius {
+    /// Returns the center point.
+    pub fn center(&self) -> (f32, f32) {
+        (self.center_x, self.center_y)
+    }
+
+    /// Returns true when the point is inside the center circle.
+    pub fn is_center(&self, x: f32, y: f32) -> bool {
+        self.distance_to(x, y) <= self.inner_radius
+    }
+
+    /// Start and end angles of a sector, in radians.
+    ///
+    /// Sectors start at the top of the wheel and run clockwise; screen
+    /// coordinates grow downward, so angle zero points right.
+    pub fn sector_angles(&self, index: usize, count: usize) -> Option<(f32, f32)> {
+        if count == 0 || index >= count {
             return None;
         }
-        if distance <= self.inner_radius {
-            return Some(WheelSegment::Press);
+        let step = std::f32::consts::TAU / count as f32;
+        let top = -std::f32::consts::FRAC_PI_2;
+        let start = top + step * index as f32;
+        Some((start, start + step))
+    }
+
+    /// Sector index under a point, or `None` inside the center or outside.
+    pub fn sector_at(&self, count: usize, x: f32, y: f32) -> Option<usize> {
+        if count == 0 {
+            return None;
+        }
+        let distance = self.distance_to(x, y);
+        if distance <= self.inner_radius || distance > self.outer_radius {
+            return None;
         }
 
-        if x < self.center_x {
-            Some(WheelSegment::Left)
-        } else {
-            Some(WheelSegment::Right)
+        let dx = x - self.center_x;
+        let dy = y - self.center_y;
+        let angle = dy.atan2(dx);
+        let top = -std::f32::consts::FRAC_PI_2;
+        let mut relative = angle - top;
+        while relative < 0.0 {
+            relative += std::f32::consts::TAU;
         }
+        while relative >= std::f32::consts::TAU {
+            relative -= std::f32::consts::TAU;
+        }
+
+        let step = std::f32::consts::TAU / count as f32;
+        let index = (relative / step).floor() as usize;
+        Some(index.min(count - 1))
     }
 
     fn distance_to(&self, x: f32, y: f32) -> f32 {
@@ -79,37 +102,50 @@ mod tests {
     }
 
     #[test]
-    fn center_is_the_press_segment() {
+    fn center_is_not_a_sector() {
         let geometry = geometry();
-        assert_eq!(geometry.hit_test(100.0, 100.0), Some(WheelSegment::Press));
-        assert_eq!(geometry.hit_test(120.0, 85.0), Some(WheelSegment::Press));
+        assert!(geometry.is_center(100.0, 100.0));
+        assert_eq!(geometry.sector_at(3, 100.0, 100.0), None);
+        assert_eq!(geometry.sector_at(3, 125.0, 100.0), None);
     }
 
     #[test]
-    fn halves_map_to_left_and_right() {
+    fn sectors_split_the_ring_evenly() {
         let geometry = geometry();
-        assert_eq!(geometry.hit_test(20.0, 100.0), Some(WheelSegment::Left));
-        assert_eq!(geometry.hit_test(50.0, 40.0), Some(WheelSegment::Left));
-        assert_eq!(geometry.hit_test(180.0, 100.0), Some(WheelSegment::Right));
-        assert_eq!(geometry.hit_test(150.0, 160.0), Some(WheelSegment::Right));
+        // Top of the wheel is the start of the first sector.
+        assert_eq!(geometry.sector_at(3, 100.0, 30.0), Some(0));
+        // The lower half is the second sector of three.
+        assert_eq!(geometry.sector_at(3, 160.0, 140.0), Some(1));
+        assert_eq!(geometry.sector_at(3, 40.0, 140.0), Some(1));
+        // Upper-left belongs to the last sector.
+        assert_eq!(geometry.sector_at(3, 40.0, 60.0), Some(2));
     }
 
     #[test]
-    fn points_outside_are_rejected() {
+    fn a_single_sector_covers_the_whole_ring() {
         let geometry = geometry();
-        assert_eq!(geometry.hit_test(100.0, 10.0), None);
-        assert_eq!(geometry.hit_test(195.0, 100.0), None);
+        for point in [(100.0, 30.0), (180.0, 100.0), (100.0, 170.0), (20.0, 100.0)] {
+            assert_eq!(geometry.sector_at(1, point.0, point.1), Some(0));
+        }
+    }
+
+    #[test]
+    fn outside_the_outer_radius_is_rejected() {
+        let geometry = geometry();
+        assert_eq!(geometry.sector_at(3, 100.0, 5.0), None);
+        assert_eq!(geometry.sector_at(3, 195.0, 100.0), None);
         assert!(!geometry.contains(100.0, 5.0));
     }
 
     #[test]
-    fn boundaries_are_inclusive() {
+    fn sector_angles_are_contiguous() {
         let geometry = geometry();
-        // Exactly on the inner radius belongs to press.
-        assert_eq!(geometry.hit_test(130.0, 100.0), Some(WheelSegment::Press));
-        // Exactly on the outer radius belongs to the ring.
-        assert_eq!(geometry.hit_test(180.0, 100.0), Some(WheelSegment::Right));
-        assert!(geometry.contains(180.0, 100.0));
+        let (start, end) = geometry.sector_angles(0, 4).expect("sector");
+        assert!((start + std::f32::consts::FRAC_PI_2).abs() < f32::EPSILON);
+        let (next_start, _) = geometry.sector_angles(1, 4).expect("sector");
+        assert!((end - next_start).abs() < f32::EPSILON);
+        assert_eq!(geometry.sector_angles(4, 4), None);
+        assert_eq!(geometry.sector_angles(0, 0), None);
     }
 
     #[test]
@@ -118,7 +154,7 @@ mod tests {
         assert_eq!(geometry.center_x, 100.0);
         assert_eq!(geometry.center_y, 100.0);
         assert_eq!(geometry.outer_radius, 92.0);
-        assert_eq!(geometry.inner_radius, 34.0);
-        assert_eq!(geometry.hit_test(100.0, 100.0), Some(WheelSegment::Press));
+        assert_eq!(geometry.inner_radius, 36.0);
+        assert!(geometry.is_center(100.0, 100.0));
     }
 }

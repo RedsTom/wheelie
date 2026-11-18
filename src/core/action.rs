@@ -78,6 +78,13 @@ pub enum Action {
         /// Number of OS volume steps.
         steps: u8,
     },
+    /// Change the screen brightness.
+    Brightness {
+        /// Direction of the change.
+        direction: VolumeDirection,
+        /// Number of brightness steps.
+        steps: u8,
+    },
     /// Scroll the window under the cursor.
     Scroll {
         /// Scroll axis.
@@ -121,6 +128,13 @@ impl Action {
                 let label = match direction {
                     VolumeDirection::Up => tr(language, TextKey::ActionVolumeUp),
                     VolumeDirection::Down => tr(language, TextKey::ActionVolumeDown),
+                };
+                with_steps(label, *steps)
+            }
+            Self::Brightness { direction, steps } => {
+                let label = match direction {
+                    VolumeDirection::Up => tr(language, TextKey::ActionBrightnessUp),
+                    VolumeDirection::Down => tr(language, TextKey::ActionBrightnessDown),
                 };
                 with_steps(label, *steps)
             }
@@ -171,6 +185,14 @@ impl Action {
                 direction: VolumeDirection::Down,
                 steps: 1,
             },
+            Self::Brightness {
+                direction: VolumeDirection::Up,
+                steps: 1,
+            },
+            Self::Brightness {
+                direction: VolumeDirection::Down,
+                steps: 1,
+            },
             Self::Scroll {
                 axis: ScrollAxis::Vertical,
                 amount: -3,
@@ -214,7 +236,7 @@ impl Action {
     /// Checks that the action can run with the given macro names.
     pub fn validate(&self, macro_names: &HashSet<String>) -> Result<(), ActionError> {
         match self {
-            Self::Volume { steps, .. } => {
+            Self::Volume { steps, .. } | Self::Brightness { steps, .. } => {
                 if (1..=10).contains(steps) {
                     Ok(())
                 } else {
@@ -314,6 +336,10 @@ mod tests {
             Action::Volume {
                 direction: VolumeDirection::Up,
                 steps: 2,
+            },
+            Action::Brightness {
+                direction: VolumeDirection::Down,
+                steps: 3,
             },
             Action::Scroll {
                 axis: ScrollAxis::Horizontal,

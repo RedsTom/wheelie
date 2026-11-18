@@ -55,6 +55,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 - [x] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
 - [x] Settings: General, Devices, Actions, Macros, About.
+- [x] Action sets with names and icons, selected from the wheel (volume,
+  brightness and scroll by default).
 - [x] Knob key picker with live test button.
 - [x] Radial overlay centered on the primary screen.
 - [x] Knob and mouse navigation in the overlay.
@@ -80,9 +82,9 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 ## M6 — Publication
 
-- [x] Version 0.1.0.
+- [x] Version 0.1.1 (action-set wheel and wgpu renderer after the 0.1.0 tag).
 - [x] Final commit and push.
-- [x] Tag `v0.1.0` (no automated release artifacts for now).
+- [x] Tags `v0.1.0` and `v0.1.1` (no automated release artifacts for now).
 
 ## Known v1 limitations
 
@@ -91,6 +93,9 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - Native Wayland global capture is not guaranteed.
 - macOS media keys may require extra permissions.
 - Windows elevated windows may ignore injected input.
+- The brightness action relies on the brightness keys exposed by `enigo` 0.6.1,
+  which only exist on macOS. On Windows and Linux the action reports that it is
+  unavailable instead of guessing at vendor APIs.
 - The tray icon is best-effort on Linux: it needs a GTK main loop that the
   window toolkit does not provide. When creation fails, Wheelie logs the reason
   and runs without a tray icon.

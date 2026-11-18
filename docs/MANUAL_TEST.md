@@ -20,12 +20,22 @@ each target platform before a release.
       refused.
 - [ ] Restart Wheelie: the three assignments are still present.
 
+## Action sets
+
+- [ ] Open **Actions**: the volume, brightness and scroll sets are listed, each
+      with an icon.
+- [ ] Create a set, rename it, pick another icon and assign actions.
+- [ ] Delete a set: it disappears from the wheel, and the active set moves to the
+      first remaining set when it was active.
+
 ## Actions
 
-- [ ] Assign volume up to right rotation. Turn the knob right: volume rises by
-      the configured number of steps.
-- [ ] Assign scroll to left rotation and turn the knob inside a long document:
-      the view scrolls in the expected direction.
+- [ ] Make the volume set active from the wheel. Turn the knob right: volume
+      rises by the configured number of steps.
+- [ ] Make the scroll set active and turn the knob inside a long document: the
+      view scrolls in the expected direction.
+- [ ] On macOS, make the brightness set active and verify brightness changes. On
+      Windows and Linux, check that a clear unavailable message is reported.
 - [ ] Assign a keyboard shortcut (for example `Ctrl+C`) to press and verify the
       shortcut reaches the focused application.
 - [ ] Assign a mouse click to press and verify the click lands under the cursor.
@@ -40,14 +50,15 @@ each target platform before a release.
 
 ## Radial wheel
 
-- [ ] Double-press the knob: the wheel opens centered on the primary screen.
-- [ ] Rotate: the selection moves between left, press and right.
-- [ ] Press: the selected action runs and the wheel closes.
-- [ ] Reopen and press `Esc`: the wheel closes without running an action.
-- [ ] Reopen and click the center with the mouse: the press action runs.
-- [ ] Reopen and click outside the wheel: the wheel closes.
-- [ ] Single-press the knob without a second press: the press action runs after
-      the double-click window, not before.
+- [ ] Double-press the knob: the wheel opens centered on the primary screen, with
+      one icon sector per action set.
+- [ ] Rotate: the selection moves between sets.
+- [ ] Press: the selected set becomes active and the wheel closes. No action runs.
+- [ ] Reopen and click a sector with the mouse: that set becomes active.
+- [ ] Reopen and press `Esc`: the wheel closes without changing the active set.
+- [ ] With a set active, rotate outside the wheel: the set's left/right actions run.
+- [ ] Single-press the knob without a second press: the press action of the
+      active set runs after the double-click window, not before.
 
 ## Tray and window
 

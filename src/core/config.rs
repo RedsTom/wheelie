@@ -1,5 +1,6 @@
 //! Versioned application configuration.
 
+use crate::core::action_set::{ActionSet, default_sets};
 use crate::core::gesture::{GestureConfig, GestureConfigError};
 use crate::core::i18n::Language;
 use crate::core::macro_engine::{MacroDefinition, MacroError};
@@ -10,7 +11,12 @@ use std::collections::HashSet;
 use thiserror::Error;
 
 /// Current configuration schema version.
-pub const CONFIG_VERSION: u32 = 1;
+///
+/// Version 2 adds the action sets selectable from the wheel.
+pub const CONFIG_VERSION: u32 = 2;
+
+/// First schema version, kept so old documents can be upgraded in place.
+const LEGACY_VERSION_1: u32 = 1;
 
 fn default_true() -> bool {
     true
@@ -83,6 +89,12 @@ pub struct Config {
     /// Available knob profiles.
     #[serde(default)]
     pub profiles: Vec<Profile>,
+    /// Identifier of the active action set, when one is selected.
+    #[serde(default)]
+    pub active_set: Option<String>,
+    /// Action sets selectable from the wheel.
+    #[serde(default)]
+    pub action_sets: Vec<ActionSet>,
     /// Available macros.
     #[serde(default)]
     pub macros: Vec<MacroDefinition>,
@@ -99,12 +111,18 @@ impl Default for Config {
             press: KeyCode::F15.into(),
         };
 
+        let language = Language::Fr;
+        let sets = default_sets(language);
+        let active_set = sets.first().map(|set| set.id.clone());
+
         Self {
             version: CONFIG_VERSION,
-            language: Language::Fr,
+            language,
             general: GeneralConfig::default(),
             active_profile: Some("default".to_owned()),
             profiles: vec![Profile::new("default", "Default", bindings)],
+            active_set,
+            action_sets: sets,
             macros: Vec::new(),
         }
     }
@@ -125,6 +143,17 @@ impl Config {
         self.profiles.iter().find(|profile| profile.id == id)
     }
 
+    /// The active action set, if it exists.
+    pub fn active_set(&self) -> Option<&ActionSet> {
+        let id = self.active_set.as_deref()?;
+        self.action_sets.iter().find(|set| set.id == id)
+    }
+
+    /// The active set, falling back to the first available one.
+    pub fn active_set_or_first(&self) -> Option<&ActionSet> {
+        self.active_set().or_else(|| self.action_sets.first())
+    }
+
     /// Validates the whole document.
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.version != CONFIG_VERSION {
@@ -141,12 +170,12 @@ impl Config {
             if !profile_ids.insert(profile.id.clone()) {
                 return Err(ConfigError::DuplicateProfileId(profile.id.clone()));
             }
-            profile.validate(&self.macro_names()).map_err(|source| {
-                ConfigError::InvalidProfile {
+            profile
+                .validate()
+                .map_err(|source| ConfigError::InvalidProfile {
                     id: profile.id.clone(),
                     source,
-                }
-            })?;
+                })?;
         }
 
         let mut macro_names = HashSet::new();
@@ -162,18 +191,56 @@ impl Config {
                 })?;
         }
 
+        let known_macros = self.macro_names();
+        let mut set_ids = HashSet::new();
+        let mut set_names = HashSet::new();
+        for set in &self.action_sets {
+            if set.id.trim().is_empty() {
+                return Err(ConfigError::EmptySetId);
+            }
+            if !set_ids.insert(set.id.clone()) {
+                return Err(ConfigError::DuplicateSetId(set.id.clone()));
+            }
+            if set.name.trim().is_empty() {
+                return Err(ConfigError::EmptySetName(set.id.clone()));
+            }
+            if !set_names.insert(set.name.to_lowercase()) {
+                return Err(ConfigError::DuplicateSetName(set.name.clone()));
+            }
+            for (control, action) in [
+                ("left", &set.actions.left),
+                ("right", &set.actions.right),
+                ("press", &set.actions.press),
+            ] {
+                action
+                    .validate(&known_macros)
+                    .map_err(|source| ConfigError::InvalidSetAction {
+                        id: set.id.clone(),
+                        control,
+                        source,
+                    })?;
+            }
+        }
+
         if let Some(active) = self.active_profile.as_deref()
             && !profile_ids.contains(active)
         {
             return Err(ConfigError::MissingActiveProfile(active.to_owned()));
         }
 
+        if let Some(active) = self.active_set.as_deref()
+            && !set_ids.contains(active)
+        {
+            return Err(ConfigError::MissingActiveSet(active.to_owned()));
+        }
+
         Ok(())
     }
 
-    /// Parses and validates a TOML document.
+    /// Parses and validates a TOML document, upgrading older versions.
     pub fn from_toml_str(document: &str) -> Result<Self, ConfigError> {
-        let config: Self = toml::from_str(document)?;
+        let mut config: Self = toml::from_str(document)?;
+        config.upgrade();
         config.validate()?;
         Ok(config)
     }
@@ -182,6 +249,18 @@ impl Config {
     pub fn to_toml_string(&self) -> Result<String, ConfigError> {
         self.validate()?;
         Ok(toml::to_string_pretty(self)?)
+    }
+
+    fn upgrade(&mut self) {
+        if self.version == LEGACY_VERSION_1 {
+            if self.action_sets.is_empty() {
+                self.action_sets = default_sets(self.language);
+            }
+            if self.active_set.is_none() {
+                self.active_set = self.action_sets.first().map(|set| set.id.clone());
+            }
+            self.version = CONFIG_VERSION;
+        }
     }
 }
 
@@ -232,15 +311,48 @@ pub enum ConfigError {
     #[error("duplicate macro name: {0}")]
     DuplicateMacroName(String),
 
+    /// An action set is invalid.
+    #[error("invalid action set {id}: {source}")]
+    InvalidSetAction {
+        /// Set identifier.
+        id: String,
+        /// Control name.
+        control: &'static str,
+        /// Underlying action error.
+        #[source]
+        source: crate::core::action::ActionError,
+    },
+
+    /// An action set has no identifier.
+    #[error("action set id cannot be empty")]
+    EmptySetId,
+
+    /// Two action sets share an identifier.
+    #[error("duplicate action set id: {0}")]
+    DuplicateSetId(String),
+
+    /// An action set has no name.
+    #[error("action set {0} has no name")]
+    EmptySetName(String),
+
+    /// Two action sets share a name.
+    #[error("duplicate action set name: {0}")]
+    DuplicateSetName(String),
+
     /// The active profile does not exist.
     #[error("active profile not found: {0}")]
     MissingActiveProfile(String),
+
+    /// The active action set does not exist.
+    #[error("active action set not found: {0}")]
+    MissingActiveSet(String),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::action::Action;
+    use crate::core::action::{Action, VolumeDirection};
+    use crate::core::action_set::{BRIGHTNESS_SET_ID, VOLUME_SET_ID};
     use crate::core::gesture::{Bindings, Control};
     use crate::core::key::{KeyChord, KeyCode};
 
@@ -258,6 +370,8 @@ mod tests {
         config.validate().expect("default config must be valid");
         assert_eq!(config.version, CONFIG_VERSION);
         assert!(config.active_profile().is_some());
+        assert!(config.active_set().is_some());
+        assert_eq!(config.action_sets.len(), 3);
     }
 
     #[test]
@@ -278,6 +392,22 @@ mod tests {
             config.validate(),
             Err(ConfigError::UnsupportedVersion(version)) if version == CONFIG_VERSION + 1
         ));
+    }
+
+    #[test]
+    fn version_one_documents_are_upgraded() {
+        let config = Config {
+            version: 1,
+            action_sets: Vec::new(),
+            active_set: None,
+            ..Default::default()
+        };
+        let document = toml::to_string_pretty(&config).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        assert_eq!(parsed.version, CONFIG_VERSION);
+        assert_eq!(parsed.action_sets.len(), 3);
+        assert_eq!(parsed.active_set.as_deref(), Some(VOLUME_SET_ID));
     }
 
     #[test]
@@ -305,19 +435,27 @@ mod tests {
     }
 
     #[test]
-    fn config_rejects_unknown_macro_reference() {
-        let mut profiles = Config::default().profiles;
-        profiles[0].actions.press = Action::Macro {
-            name: "missing".to_owned(),
-        };
+    fn config_rejects_unknown_active_set() {
         let config = Config {
-            profiles,
+            active_set: Some("missing".to_owned()),
             ..Default::default()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::MissingActiveSet(id)) if id == "missing"
+        ));
+    }
+
+    #[test]
+    fn config_rejects_unknown_macro_reference_in_a_set() {
+        let mut config = Config::default();
+        config.action_sets[0].actions.press = Action::Macro {
+            name: "missing".to_owned(),
         };
         let error = config.validate().expect_err("must fail");
         assert!(matches!(
             error,
-            ConfigError::InvalidProfile { id, .. } if id == "default"
+            ConfigError::InvalidSetAction { id, control: "press", .. } if id == VOLUME_SET_ID
         ));
     }
 
@@ -333,6 +471,32 @@ mod tests {
         assert!(matches!(
             config.validate(),
             Err(ConfigError::DuplicateMacroName(name)) if name == "copy"
+        ));
+    }
+
+    #[test]
+    fn config_rejects_duplicate_or_nameless_sets() {
+        let mut config = Config::default();
+        let mut duplicate = config.action_sets[0].clone();
+        duplicate.name = "Other".to_owned();
+        config.action_sets.push(duplicate);
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateSetId(id)) if id == VOLUME_SET_ID
+        ));
+
+        let mut config = Config::default();
+        config.action_sets[1].name = config.action_sets[0].name.clone();
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateSetName(_))
+        ));
+
+        let mut config = Config::default();
+        config.action_sets[0].name = " ".to_owned();
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::EmptySetName(id)) if id == VOLUME_SET_ID
         ));
     }
 
@@ -377,5 +541,23 @@ mod tests {
             profile.matches_chord(KeyChord::new(KeyCode::F13)),
             Some(Control::Left)
         );
+    }
+
+    #[test]
+    fn default_sets_provide_working_actions() {
+        let config = Config::default();
+        let volume = &config.action_sets[0];
+        assert_eq!(volume.id, VOLUME_SET_ID);
+        assert!(matches!(
+            volume.actions.right,
+            Action::Volume {
+                direction: VolumeDirection::Up,
+                ..
+            }
+        ));
+
+        let brightness = &config.action_sets[1];
+        assert_eq!(brightness.id, BRIGHTNESS_SET_ID);
+        assert!(matches!(brightness.actions.left, Action::Brightness { .. }));
     }
 }

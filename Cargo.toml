@@ -1,6 +1,6 @@
 [package]
 name = "wheelie"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0-only"
@@ -14,7 +14,7 @@ auto-launch = "0.6"
 clap = { version = "4.6", features = ["derive"] }
 crossbeam-channel = "0.5"
 directories = "6"
-eframe = "0.33.3"
+eframe = { version = "0.33.3", features = ["wgpu"] }
 enigo = "0.6.1"
 global-hotkey = "0.10"
 image = { version = "0.25", default-features = false, features = ["png"] }

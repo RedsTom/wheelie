@@ -19,9 +19,13 @@ Wheelie is not affiliated with Microsoft.
 
 - Knob left/right/press key assignment with a live test button.
 - Exclusive global capture of the configured keys.
-- Radial overlay centered on the primary screen, navigated with the knob or the mouse.
-- Actions: volume, scroll, macros, keyboard shortcuts, mouse clicks, media keys and
-  app launching.
+- Radial overlay centered on the primary screen, navigated with the knob or the
+  mouse. Each sector is an action set with its own icon; confirming one makes it
+  the active set.
+- Action sets: volume, brightness and scroll by default, and as many more as you
+  like, each with a name, an icon and three actions.
+- Actions: volume, brightness, scroll, macros, keyboard shortcuts, mouse clicks,
+  media keys and app launching.
 - Macro editor with key, text, delay, mouse click and scroll steps.
 - Tray icon with show/hide, pause/resume and quit; closing settings keeps Wheelie
   running in the tray.
@@ -72,12 +76,14 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 1. Open **Devices** and pick the keys your keyboard software sends for knob left,
    knob right and knob press. The three keys must be different; the live check
    shows the last key received.
-2. Open **Actions** and choose what each control does.
+2. Open **Actions** to create action sets. Each set has a name, an icon and one
+   action for left rotation, one for right rotation and one for the press.
 3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
    mouse clicks.
-4. Press the knob twice to open the wheel. Rotate to move the selection, press to
-   confirm, or use the mouse. `Esc` closes it. A single knob press runs the press
-   action after the double-click window (350 ms by default).
+4. Press the knob twice to open the wheel. Rotate to move between sets, press to
+   make one active, or click its sector. `Esc` closes the wheel. Outside the
+   wheel, rotation and a single press run the actions of the active set; a single
+   press waits for the double-click window (350 ms by default).
 
 Closing the settings window hides Wheelie to the tray. Use the tray menu to show
 the window again, pause or resume knob detection, or quit. Only one Wheelie
@@ -105,8 +111,9 @@ GTK/X11/Wayland development packages listed in `.github/workflows/ci.yml`.
 
 Logs are written to the platform data directory under `Wheelie/logs/`. The
 configuration is written atomically; a file that cannot be read is kept as
-`config.toml.bak` and Wheelie starts from defaults. Unknown fields are ignored so
-older documents keep working.
+`config.toml.bak` and Wheelie starts from defaults. The schema is version 2:
+version 1 documents are upgraded in place and unknown fields are ignored so older
+documents keep working.
 
 ## Verification
 

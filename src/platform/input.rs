@@ -28,6 +28,9 @@ pub trait InputSink: Send {
     /// Changes the system volume by OS steps.
     fn volume(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError>;
 
+    /// Changes the screen brightness by OS steps.
+    fn brightness(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError>;
+
     /// Sends a media transport command.
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError>;
 
@@ -121,6 +124,27 @@ impl InputSink for EnigoInputSink {
             self.enigo.key(key, Direction::Click)?;
         }
         Ok(())
+    }
+
+    fn brightness(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
+        #[cfg(target_os = "macos")]
+        {
+            let key = match direction {
+                VolumeDirection::Up => Key::BrightnessUp,
+                VolumeDirection::Down => Key::BrightnessDown,
+            };
+            for _ in 0..steps {
+                self.enigo.key(key, Direction::Click)?;
+            }
+            Ok(())
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (direction, steps);
+            Err(PlatformError::Unsupported(
+                "screen brightness is not available on this platform",
+            ))
+        }
     }
 
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError> {
