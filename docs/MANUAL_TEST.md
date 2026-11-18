@@ -11,6 +11,23 @@ each target platform before a release.
 - On macOS: Accessibility and Input Monitoring granted to Wheelie when prompted.
 - On Linux: an X11 session. Wayland is best-effort only.
 
+## First launch
+
+- [ ] Start Wheelie with no configuration file: the setup opens on the language
+      page instead of the settings, with a three-step indicator at the top.
+- [ ] Choose English: the remaining pages, the tray menu and the settings use
+      English immediately.
+- [ ] On the first page, switch start at login on and off: the choice is applied
+      immediately and the settings page shows the same state afterwards.
+- [ ] Assign the three knob keys from the setup; a duplicate key shows the
+      warning and is refused.
+- [ ] The last page explains the double click, choosing a set and running actions;
+      the button invites you to try the knob now.
+- [ ] Finish the setup, restart Wheelie: the settings open directly and the
+      language and keys are kept.
+- [ ] Start with an existing configuration file that predates the setup: the
+      settings open directly.
+
 ## Key assignment
 
 - [ ] Open **Devices** and start the live check for left rotation.
@@ -18,13 +35,17 @@ each target platform before a release.
 - [ ] Repeat for right rotation and press.
 - [ ] Assign the same key to two controls: the warning appears and the change is
       refused.
+- [ ] In a shortcut field, press Volume Up, Volume Down and Mute: each key is
+      shown as the chosen key and the system volume does not change while the
+      field is waiting.
 - [ ] Restart Wheelie: the three assignments are still present.
 
 ## Action sets
 
-- [ ] Open **Actions**: the volume, vertical scroll and horizontal scroll sets are
-      listed, each with an icon. On macOS the brightness set is listed too; on
-      Windows and Linux it is absent and brightness is not offered in the picker.
+- [ ] Open **Actions**: the volume, vertical scroll, horizontal scroll and media
+      sets are listed, each with an icon. On macOS the brightness set is listed
+      too; on Windows and Linux it is absent and brightness is not offered in the
+      picker.
 - [ ] Create a set, rename it, pick another icon and assign actions.
 - [ ] Delete a set: it disappears from the wheel, and the active set moves to the
       first remaining set when it was active.
@@ -32,7 +53,13 @@ each target platform before a release.
 ## Actions
 
 - [ ] Make the volume set active from the wheel. Turn the knob right: volume
-      rises by the configured number of steps.
+      rises by the configured number of steps and the indicator shows the new
+      percentage.
+- [ ] With the volume set active, press the knob: sound mutes, the indicator
+      keeps the stored percentage and switches to the muted speaker icon. Press
+      again to restore sound.
+- [ ] Make the media set active: left goes to the previous track, right to the
+      next track and press toggles play/pause.
 - [ ] Make the scroll set active and turn the knob inside a long document: the
       view scrolls in the expected direction.
 - [ ] On macOS, make the brightness set active and verify brightness changes. On
@@ -58,17 +85,20 @@ each target platform before a release.
 - [ ] Reopen and click a sector with the mouse: that set becomes active.
 - [ ] Reopen and press `Esc`: the wheel closes without changing the active set.
 - [ ] Reopen and focus another window: the wheel closes by itself.
-- [ ] Assign the mute action to a control and check that sound toggles.
 - [ ] With a set active, rotate outside the wheel: the set's left/right actions run.
 - [ ] Single-press the knob without a second press: the press action of the
       active set runs after the double-click window, not before.
 
 ## Tray and window
 
+- [ ] With the settings open, the tray menu offers **Hide**, one pause action
+      and **Quit**: no **Show** entry and no paired pause action.
 - [ ] Close the settings window: it disappears and the tray icon remains (on
-      Linux, note whether a tray icon is available; if not, check the log).
-- [ ] Tray **Show**: the window returns with focus.
-- [ ] Tray **Pause**: knob input stops running actions. **Resume** restores it.
+      Linux, note whether a tray icon is available; if not, check the log). The
+      menu now offers **Show** instead of **Hide**.
+- [ ] Tray **Show**: the window returns with focus and the menu switches back.
+- [ ] Tray **Pause**: knob input stops running actions. The menu now offers
+      **Resume** only; **Resume** restores it.
 - [ ] Tray **Quit**: Wheelie exits completely.
 - [ ] Start Wheelie twice: the second process exits immediately.
 

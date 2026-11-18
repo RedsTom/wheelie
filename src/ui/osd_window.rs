@@ -15,6 +15,7 @@ use gpui::{
     App, Bounds, Context, Render, Window, WindowBackgroundAppearance, WindowBounds,
     WindowDecorations, WindowHandle, WindowKind, WindowOptions, div, point, px, relative, size,
 };
+use gpui_icons::LucideIcon;
 use std::time::{Duration, Instant};
 
 const WIDTH: f32 = 260.0;
@@ -41,6 +42,34 @@ impl Osd {
             indicator,
             until: Instant::now() + DISPLAY_DURATION,
         }
+    }
+}
+
+/// Values drawn by the indicator for one level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IndicatorDisplay {
+    icon: SetIcon,
+    shown: u8,
+    muted: bool,
+}
+
+fn indicator_display(indicator: Option<Indicator>) -> IndicatorDisplay {
+    match indicator {
+        Some(Indicator::Volume(level)) => IndicatorDisplay {
+            icon: SetIcon::Volume,
+            shown: level.percent,
+            muted: level.muted,
+        },
+        Some(Indicator::Brightness(percent)) => IndicatorDisplay {
+            icon: SetIcon::Brightness,
+            shown: percent,
+            muted: false,
+        },
+        None => IndicatorDisplay {
+            icon: SetIcon::Volume,
+            shown: 0,
+            muted: false,
+        },
     }
 }
 
@@ -138,14 +167,13 @@ impl Render for OsdView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.shared.borrow();
         let t = style::tokens(state.preferences.theme_mode);
-        let (icon, shown) = match state.osd.map(|osd| osd.indicator) {
-            Some(Indicator::Volume(level)) => {
-                (SetIcon::Volume, if level.muted { 0 } else { level.percent })
-            }
-            Some(Indicator::Brightness(percent)) => (SetIcon::Brightness, percent),
-            None => (SetIcon::Volume, 0),
+        let display = indicator_display(state.osd.map(|osd| osd.indicator));
+        let icon = if display.muted {
+            iconset::lucide_element(LucideIcon::VolumeX, ICON_SIZE, t.text).into_any_element()
+        } else {
+            iconset::element(display.icon, ICON_SIZE, t.text).into_any_element()
         };
-        let fraction = f32::from(shown) / 100.0;
+        let fraction = f32::from(display.shown) / 100.0;
 
         div()
             .size_full()
@@ -163,7 +191,7 @@ impl Render for OsdView {
                     .flex()
                     .items_center()
                     .gap_3()
-                    .child(iconset::element(icon, ICON_SIZE, t.text))
+                    .child(icon)
                     .child(
                         div().flex_1().h(px(6.0)).rounded_full().bg(t.border).child(
                             div()
@@ -180,8 +208,47 @@ impl Render for OsdView {
                             .justify_end()
                             .text_color(t.text)
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(shown.to_string()),
+                            .child(display.shown.to_string()),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::volume::Level;
+
+    #[test]
+    fn muted_volume_keeps_the_percentage() {
+        let display = indicator_display(Some(Indicator::Volume(Level {
+            percent: 42,
+            muted: true,
+        })));
+
+        assert_eq!(display.icon, SetIcon::Volume);
+        assert_eq!(display.shown, 42);
+        assert!(display.muted);
+    }
+
+    #[test]
+    fn unmuted_volume_uses_the_normal_icon() {
+        let display = indicator_display(Some(Indicator::Volume(Level {
+            percent: 75,
+            muted: false,
+        })));
+
+        assert_eq!(display.icon, SetIcon::Volume);
+        assert_eq!(display.shown, 75);
+        assert!(!display.muted);
+    }
+
+    #[test]
+    fn brightness_has_no_muted_state() {
+        let display = indicator_display(Some(Indicator::Brightness(60)));
+
+        assert_eq!(display.icon, SetIcon::Brightness);
+        assert_eq!(display.shown, 60);
+        assert!(!display.muted);
     }
 }
