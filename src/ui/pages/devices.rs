@@ -378,3 +378,22 @@ fn control_label(language: Language, control: Control) -> &'static str {
         Control::Press => tr(language, TextKey::ControlPress),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacing_one_chord_keeps_the_others() {
+        let bindings = Bindings {
+            left: KeyChord::new(KeyCode::F13),
+            right: KeyChord::new(KeyCode::F14),
+            press: KeyChord::new(KeyCode::F15),
+        };
+
+        let updated = with_chord(bindings, Control::Press, KeyChord::new(KeyCode::F16));
+        assert_eq!(updated.press, KeyChord::new(KeyCode::F16));
+        assert_eq!(updated.left, bindings.left);
+        assert_eq!(updated.right, bindings.right);
+    }
+}

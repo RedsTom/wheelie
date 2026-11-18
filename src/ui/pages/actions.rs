@@ -1516,3 +1516,45 @@ fn preview_box(
             }
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_have_unique_names_and_ids() {
+        let mut sets = Vec::new();
+        for _ in 0..3 {
+            let set = new_set(&sets, Language::En);
+            sets.push(set);
+        }
+        assert_eq!(sets[0].id, "set-1");
+        assert_eq!(sets[1].id, "set-2");
+        assert_eq!(sets[2].name, "Set 3");
+    }
+
+    #[test]
+    fn brightness_is_only_offered_when_supported() {
+        let without = Kind::choices(false);
+        assert!(without.contains(&Kind::None));
+        assert!(!without.contains(&Kind::Brightness));
+
+        let with = Kind::choices(true);
+        assert!(with.contains(&Kind::Brightness));
+        assert_eq!(with.first(), Some(&Kind::None));
+    }
+
+    #[test]
+    fn kind_round_trips_every_action() {
+        let mut config = Config::default();
+        config.macros.push(crate::core::MacroDefinition {
+            name: "macro".to_owned(),
+            steps: vec![crate::core::MacroStep::Delay { ms: 0 }],
+        });
+
+        for kind in Kind::ALL {
+            let action = kind.default_action(&config);
+            assert_eq!(Kind::of(&action), kind, "kind mismatch for {kind:?}");
+        }
+    }
+}
