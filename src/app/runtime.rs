@@ -201,7 +201,9 @@ impl Runtime {
         let (event_tx, event_rx) = unbounded();
         let snapshot = Arc::new(RwLock::new(RuntimeSnapshot::default()));
 
-        let LoadedConfig { config, warning } = store.load();
+        let platform = crate::platform::info();
+        let LoadedConfig { config, warning } =
+            store.load_with_default(Config::default_with(platform.brightness_supported));
         if let Some(warning) = &warning {
             warn!(%warning, "configuration was not usable");
             let mut current = write_snapshot(&snapshot);
@@ -409,7 +411,8 @@ mod tests {
         let mut runtime = Runtime::with_store(store.clone()).expect("runtime");
         let handle = runtime.handle();
         assert!(handle.snapshot().last_error.is_some());
-        assert_eq!(handle.config(), Config::default());
+        let expected = Config::default_with(crate::platform::info().brightness_supported);
+        assert_eq!(handle.config(), expected);
 
         runtime.shutdown();
     }

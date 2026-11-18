@@ -81,7 +81,14 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
                 && let Some(set) = sets.get_mut(index)
             {
                 let is_active = active.as_deref() == Some(set.id.as_str());
-                if editor(ui, language, &config, set, is_active) {
+                if editor(
+                    ui,
+                    language,
+                    &config,
+                    set,
+                    is_active,
+                    context.platform.brightness_supported,
+                ) {
                     changed = true;
                 }
             }
@@ -112,6 +119,7 @@ fn editor(
     config: &Config,
     set: &mut ActionSet,
     is_active: bool,
+    brightness_supported: bool,
 ) -> bool {
     let mut changed = false;
 
@@ -148,7 +156,14 @@ fn editor(
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(8.0);
-        changed |= show_control(ui, language, config, control, &mut set.actions);
+        changed |= show_control(
+            ui,
+            language,
+            config,
+            control,
+            &mut set.actions,
+            brightness_supported,
+        );
     }
 
     changed
@@ -235,6 +250,16 @@ impl Kind {
         Self::Launch,
     ];
 
+    /// Kinds offered in the picker. "No action" is always available, and
+    /// brightness only when the input backend can change it.
+    fn choices(brightness_supported: bool) -> Vec<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .filter(|kind| brightness_supported || *kind != Self::Brightness)
+            .collect()
+    }
+
     fn of(action: &Action) -> Self {
         match action {
             Action::None => Self::None,
@@ -306,6 +331,7 @@ fn show_control(
     config: &Config,
     control: Control,
     actions: &mut Actions,
+    brightness_supported: bool,
 ) -> bool {
     let mut changed = false;
     let control_key = match control {
@@ -327,7 +353,7 @@ fn show_control(
                 .selected_text(kind.label(language))
                 .width(170.0)
                 .show_ui(ui, |ui| {
-                    for option in Kind::ALL {
+                    for option in Kind::choices(brightness_supported) {
                         ui.selectable_value(&mut kind, option, option.label(language));
                     }
                 });
@@ -558,6 +584,17 @@ mod tests {
         assert_eq!(sets[0].id, "set-1");
         assert_eq!(sets[1].id, "set-2");
         assert_eq!(sets[2].name, "Set 3");
+    }
+
+    #[test]
+    fn brightness_is_only_offered_when_supported() {
+        let without = Kind::choices(false);
+        assert!(without.contains(&Kind::None));
+        assert!(!without.contains(&Kind::Brightness));
+
+        let with = Kind::choices(true);
+        assert!(with.contains(&Kind::Brightness));
+        assert_eq!(with.first(), Some(&Kind::None));
     }
 
     #[test]

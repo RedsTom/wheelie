@@ -65,6 +65,7 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 
 - Rust 1.89, edition 2024.
 - `eframe`/`egui` 0.33.3. Do not bump to 0.37 until the toolchain is Rust 1.95.
+- `egui-phosphor` 0.11 for action-set icons; later versions require newer egui.
 - `tray-icon` 0.24.2. Do not bump to 0.26 until Rust 1.90.
 - `global-hotkey` 0.10 for exclusive global hotkeys.
 - `enigo` 0.6.1 for cross-platform volume/scroll/key/mouse/text injection.

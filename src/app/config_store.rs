@@ -46,19 +46,27 @@ impl ConfigStore {
         &self.path
     }
 
-    /// Loads the document, falling back to defaults on any problem.
+    /// Loads the document, falling back to the platform defaults on any problem.
     pub fn load(&self) -> LoadedConfig {
+        self.load_with_default(Config::default())
+    }
+
+    /// Loads the document, using `default` when no usable file exists.
+    ///
+    /// The caller passes defaults filtered for the platform, so a fresh install
+    /// never offers an action the input backend cannot perform.
+    pub fn load_with_default(&self, default: Config) -> LoadedConfig {
         let document = match fs::read_to_string(&self.path) {
             Ok(document) => document,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return LoadedConfig {
-                    config: Config::default(),
+                    config: default,
                     warning: None,
                 };
             }
             Err(error) => {
                 return LoadedConfig {
-                    config: Config::default(),
+                    config: default,
                     warning: Some(format!("could not read {}: {error}", self.path.display())),
                 };
             }
@@ -72,7 +80,7 @@ impl ConfigStore {
             Err(error) => {
                 let warning = self.preserve_broken_copy(&error);
                 LoadedConfig {
-                    config: Config::default(),
+                    config: default,
                     warning: Some(warning),
                 }
             }

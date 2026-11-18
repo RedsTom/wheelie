@@ -19,6 +19,8 @@ pub enum SetIcon {
     Brightness,
     /// Vertical arrows.
     Scroll,
+    /// Horizontal arrows.
+    ScrollHorizontal,
     /// Keyboard.
     Keyboard,
     /// Mouse.
@@ -41,10 +43,11 @@ pub enum SetIcon {
 
 impl SetIcon {
     /// Every icon, in display order for the picker.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Volume,
         Self::Brightness,
         Self::Scroll,
+        Self::ScrollHorizontal,
         Self::Keyboard,
         Self::Mouse,
         Self::Media,
@@ -88,11 +91,15 @@ impl ActionSet {
 pub const VOLUME_SET_ID: &str = "volume";
 /// Identifier of the default brightness set.
 pub const BRIGHTNESS_SET_ID: &str = "brightness";
-/// Identifier of the default scroll set.
+/// Identifier of the default vertical scroll set.
 pub const SCROLL_SET_ID: &str = "scroll";
+/// Identifier of the default horizontal scroll set.
+pub const SCROLL_HORIZONTAL_SET_ID: &str = "scroll-horizontal";
 
 /// Default sets offered on a fresh configuration.
-pub fn default_sets(language: Language) -> Vec<ActionSet> {
+///
+/// The brightness set is only included when the input backend supports it.
+pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<ActionSet> {
     use crate::core::action::{Action, ScrollAxis, VolumeDirection};
 
     let mut volume = ActionSet::new(
@@ -109,19 +116,24 @@ pub fn default_sets(language: Language) -> Vec<ActionSet> {
         steps: 1,
     };
 
-    let mut brightness = ActionSet::new(
-        BRIGHTNESS_SET_ID,
-        tr(language, TextKey::SetBrightness),
-        SetIcon::Brightness,
-    );
-    brightness.actions.left = Action::Brightness {
-        direction: VolumeDirection::Down,
-        steps: 1,
-    };
-    brightness.actions.right = Action::Brightness {
-        direction: VolumeDirection::Up,
-        steps: 1,
-    };
+    let mut sets = vec![volume];
+
+    if brightness_supported {
+        let mut brightness = ActionSet::new(
+            BRIGHTNESS_SET_ID,
+            tr(language, TextKey::SetBrightness),
+            SetIcon::Brightness,
+        );
+        brightness.actions.left = Action::Brightness {
+            direction: VolumeDirection::Down,
+            steps: 1,
+        };
+        brightness.actions.right = Action::Brightness {
+            direction: VolumeDirection::Up,
+            steps: 1,
+        };
+        sets.push(brightness);
+    }
 
     let mut scroll = ActionSet::new(
         SCROLL_SET_ID,
@@ -136,8 +148,30 @@ pub fn default_sets(language: Language) -> Vec<ActionSet> {
         axis: ScrollAxis::Vertical,
         amount: 3,
     };
+    sets.push(scroll);
+    sets.push(horizontal_scroll_set(language));
 
-    vec![volume, brightness, scroll]
+    sets
+}
+
+/// Horizontal scroll set, also used when upgrading older documents.
+pub fn horizontal_scroll_set(language: Language) -> ActionSet {
+    use crate::core::action::{Action, ScrollAxis};
+
+    let mut set = ActionSet::new(
+        SCROLL_HORIZONTAL_SET_ID,
+        tr(language, TextKey::SetScrollHorizontal),
+        SetIcon::ScrollHorizontal,
+    );
+    set.actions.left = Action::Scroll {
+        axis: ScrollAxis::Horizontal,
+        amount: -3,
+    };
+    set.actions.right = Action::Scroll {
+        axis: ScrollAxis::Horizontal,
+        amount: 3,
+    };
+    set
 }
 
 #[cfg(test)]
@@ -145,16 +179,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_sets_cover_volume_brightness_and_scroll() {
-        let sets = default_sets(Language::Fr);
-        assert_eq!(sets.len(), 3);
+    fn default_sets_cover_volume_brightness_and_both_scroll_axes() {
+        let sets = default_sets(Language::Fr, true);
+        assert_eq!(sets.len(), 4);
         assert_eq!(sets[0].id, VOLUME_SET_ID);
         assert_eq!(sets[1].id, BRIGHTNESS_SET_ID);
         assert_eq!(sets[2].id, SCROLL_SET_ID);
+        assert_eq!(sets[3].id, SCROLL_HORIZONTAL_SET_ID);
         assert_eq!(sets[0].name, "Volume");
         assert_eq!(sets[1].name, "Luminosité");
         assert_eq!(sets[2].name, "Défilement");
+        assert_eq!(sets[3].name, "Défilement horizontal");
         assert_eq!(sets[0].icon, SetIcon::Volume);
+        assert_eq!(sets[3].icon, SetIcon::ScrollHorizontal);
+    }
+
+    #[test]
+    fn brightness_set_is_omitted_without_backend_support() {
+        let sets = default_sets(Language::En, false);
+        assert_eq!(sets.len(), 3);
+        assert!(sets.iter().all(|set| set.id != BRIGHTNESS_SET_ID));
+        assert_eq!(sets[1].id, SCROLL_SET_ID);
+        assert_eq!(sets[2].id, SCROLL_HORIZONTAL_SET_ID);
     }
 
     #[test]

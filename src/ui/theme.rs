@@ -78,6 +78,8 @@ pub fn install_fonts(context: &egui::Context) {
         vec!["inter-semibold".to_owned(), "inter-regular".to_owned()],
     );
 
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
     context.set_fonts(fonts);
 }
 

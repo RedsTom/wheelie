@@ -10,7 +10,7 @@ use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 /// Size of the overlay viewport, in points.
-pub const OVERLAY_SIZE: f32 = 460.0;
+pub const OVERLAY_SIZE: f32 = 350.0;
 
 /// What the user did in the overlay this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +120,7 @@ pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: 
 
             paint(ui, sets, state, &geometry, center, size);
 
-            painter_hint(ui, rect, language);
+            painter_titles(ui, sets, state, rect, language);
         });
 }
 
@@ -133,14 +133,17 @@ fn paint(
     size: f32,
 ) {
     let painter = ui.painter();
-    let border = Stroke::new(1.5_f32, Color32::from_white_alpha(46));
-    let base = Color32::from_rgba_unmultiplied(22, 26, 36, 238);
-    let accent = Color32::from_rgba_unmultiplied(75, 139, 255, 242);
+    let base = Color32::from_rgba_unmultiplied(24, 28, 38, 235);
+    let hovered_fill = Color32::from_rgba_unmultiplied(38, 44, 58, 245);
+    let accent = Color32::from_rgb(75, 139, 255);
 
     if sets.is_empty() {
         painter.circle_filled(center, geometry.outer_radius, base);
-        painter.circle_stroke(center, geometry.outer_radius, border);
+        return;
     }
+
+    let step = std::f32::consts::TAU / sets.len() as f32;
+    let gap = (step * 0.045).min(0.035);
 
     for (index, set) in sets.iter().enumerate() {
         let Some((start, end)) = geometry.sector_angles(index, sets.len()) else {
@@ -148,44 +151,62 @@ fn paint(
         };
         let selected = state.selected == index;
         let hovered = state.hovered == Some(index);
-        let fill = if selected || hovered { accent } else { base };
+        let fill = if selected {
+            accent
+        } else if hovered {
+            hovered_fill
+        } else {
+            base
+        };
 
-        let points = sector_points(center, geometry, start, end);
-        painter.add(egui::Shape::convex_polygon(points, fill, border));
+        let points = sector_points(center, geometry, start + gap, end - gap);
+        painter.add(egui::Shape::convex_polygon(points, fill, Stroke::NONE));
 
         let mid = (start + end) / 2.0;
         let icon_radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
         let icon_center = center + Vec2::angled(mid) * icon_radius;
-        let icon_side = (size * 0.075).clamp(18.0, 34.0);
+        let icon_side = (size * 0.09).clamp(20.0, 32.0);
         let icon_rect = Rect::from_center_size(icon_center, Vec2::splat(icon_side));
-        icons::paint(painter, icon_rect, set.icon, Color32::WHITE);
-
-        let label_radius = icon_radius + icon_side * 0.9;
-        let label_position = center + Vec2::angled(mid) * label_radius;
-        painter.text(
-            label_position,
-            Align2::CENTER_CENTER,
-            truncate(&set.name, label_capacity(sets.len())),
-            FontId::proportional(11.5),
-            Color32::WHITE,
-        );
+        let color = if selected {
+            Color32::WHITE
+        } else {
+            Color32::from_white_alpha(220)
+        };
+        icons::paint(painter, icon_rect, set.icon, color);
     }
 
-    painter.circle_filled(center, geometry.inner_radius, accent);
-    painter.circle_stroke(center, geometry.inner_radius, border);
+    painter.circle_filled(center, geometry.inner_radius * 0.92, base);
     if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
-        let icon_rect = Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.1));
+        let icon_rect = Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.15));
         icons::paint(painter, icon_rect, set.icon, Color32::WHITE);
     }
 }
 
-fn painter_hint(ui: &egui::Ui, rect: Rect, language: Language) {
-    ui.painter().text(
-        rect.center_bottom() - egui::vec2(0.0, 18.0),
+/// Writes the selected set name once, at the top of the wheel.
+fn painter_titles(
+    ui: &egui::Ui,
+    sets: &[ActionSet],
+    state: &OverlayState,
+    rect: Rect,
+    language: Language,
+) {
+    let painter = ui.painter();
+    if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
+        painter.text(
+            rect.center_top() + egui::vec2(0.0, 22.0),
+            Align2::CENTER_CENTER,
+            truncate(&set.name, 32),
+            FontId::proportional(15.0),
+            Color32::WHITE,
+        );
+    }
+
+    painter.text(
+        rect.center_bottom() - egui::vec2(0.0, 20.0),
         Align2::CENTER_BOTTOM,
         tr(language, TextKey::OverlayHint),
-        FontId::proportional(11.0),
-        Color32::from_white_alpha(170),
+        FontId::proportional(10.5),
+        Color32::from_white_alpha(150),
     );
 }
 
@@ -201,14 +222,6 @@ fn sector_points(center: Pos2, geometry: &WheelGeometry, start: f32, end: f32) -
         points.push(center + Vec2::angled(angle) * geometry.inner_radius);
     }
     points
-}
-
-fn label_capacity(count: usize) -> usize {
-    match count {
-        0..=3 => 26,
-        4..=6 => 18,
-        _ => 12,
-    }
 }
 
 fn truncate(text: &str, limit: usize) -> String {

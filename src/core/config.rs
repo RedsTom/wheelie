@@ -1,6 +1,8 @@
 //! Versioned application configuration.
 
-use crate::core::action_set::{ActionSet, default_sets};
+use crate::core::action_set::{
+    ActionSet, SCROLL_HORIZONTAL_SET_ID, default_sets, horizontal_scroll_set,
+};
 use crate::core::gesture::{GestureConfig, GestureConfigError};
 use crate::core::i18n::Language;
 use crate::core::macro_engine::{MacroDefinition, MacroError};
@@ -12,11 +14,14 @@ use thiserror::Error;
 
 /// Current configuration schema version.
 ///
-/// Version 2 adds the action sets selectable from the wheel.
-pub const CONFIG_VERSION: u32 = 2;
+/// Version 2 adds the action sets selectable from the wheel; version 3 adds the
+/// default horizontal scroll set.
+pub const CONFIG_VERSION: u32 = 3;
 
 /// First schema version, kept so old documents can be upgraded in place.
 const LEGACY_VERSION_1: u32 = 1;
+/// Second schema version.
+const LEGACY_VERSION_2: u32 = 2;
 
 fn default_true() -> bool {
     true
@@ -102,6 +107,16 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        Self::default_with(true)
+    }
+}
+
+impl Config {
+    /// Default document for a fresh installation.
+    ///
+    /// `brightness_supported` controls whether the default brightness set is
+    /// offered: platforms whose input backend cannot change it must not show it.
+    pub fn default_with(brightness_supported: bool) -> Self {
         use crate::core::gesture::Bindings;
         use crate::core::key::KeyCode;
 
@@ -112,7 +127,7 @@ impl Default for Config {
         };
 
         let language = Language::Fr;
-        let sets = default_sets(language);
+        let sets = default_sets(language, brightness_supported);
         let active_set = sets.first().map(|set| set.id.clone());
 
         Self {
@@ -126,9 +141,7 @@ impl Default for Config {
             macros: Vec::new(),
         }
     }
-}
 
-impl Config {
     /// Names of all macros, used to validate action references.
     pub fn macro_names(&self) -> HashSet<String> {
         self.macros
@@ -254,10 +267,22 @@ impl Config {
     fn upgrade(&mut self) {
         if self.version == LEGACY_VERSION_1 {
             if self.action_sets.is_empty() {
-                self.action_sets = default_sets(self.language);
+                self.action_sets = default_sets(self.language, true);
             }
             if self.active_set.is_none() {
                 self.active_set = self.action_sets.first().map(|set| set.id.clone());
+            }
+            self.version = LEGACY_VERSION_2;
+        }
+
+        if self.version == LEGACY_VERSION_2 {
+            if !self.action_sets.is_empty()
+                && !self
+                    .action_sets
+                    .iter()
+                    .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
+            {
+                self.action_sets.push(horizontal_scroll_set(self.language));
             }
             self.version = CONFIG_VERSION;
         }
@@ -371,7 +396,7 @@ mod tests {
         assert_eq!(config.version, CONFIG_VERSION);
         assert!(config.active_profile().is_some());
         assert!(config.active_set().is_some());
-        assert_eq!(config.action_sets.len(), 3);
+        assert_eq!(config.action_sets.len(), 4);
     }
 
     #[test]
@@ -406,8 +431,36 @@ mod tests {
 
         let parsed = Config::from_toml_str(&document).expect("upgrade");
         assert_eq!(parsed.version, CONFIG_VERSION);
-        assert_eq!(parsed.action_sets.len(), 3);
+        assert_eq!(parsed.action_sets.len(), 4);
         assert_eq!(parsed.active_set.as_deref(), Some(VOLUME_SET_ID));
+        assert!(
+            parsed
+                .action_sets
+                .iter()
+                .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
+        );
+    }
+
+    #[test]
+    fn version_two_documents_gain_the_horizontal_scroll_set() {
+        let config = Config {
+            version: 2,
+            action_sets: default_sets(Language::Fr, true)
+                .into_iter()
+                .filter(|set| set.id != SCROLL_HORIZONTAL_SET_ID)
+                .collect(),
+            ..Default::default()
+        };
+        let document = toml::to_string_pretty(&config).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        assert_eq!(parsed.version, CONFIG_VERSION);
+        assert!(
+            parsed
+                .action_sets
+                .iter()
+                .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
+        );
     }
 
     #[test]

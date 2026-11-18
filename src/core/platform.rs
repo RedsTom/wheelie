@@ -22,4 +22,6 @@ pub struct PlatformInfo {
     pub capture: CaptureMode,
     /// True when the compositor or permissions may restrict global capture.
     pub capture_is_limited: bool,
+    /// True when the input backend can change the screen brightness.
+    pub brightness_supported: bool,
 }

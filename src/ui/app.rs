@@ -597,6 +597,12 @@ impl WheelieApp {
 }
 
 impl eframe::App for WheelieApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // Fully transparent: the settings window paints its own background and
+        // the wheel viewport relies on the alpha channel being cleared.
+        [0.0, 0.0, 0.0, 0.0]
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
         theme::apply(ctx, self.preferences.theme_mode);

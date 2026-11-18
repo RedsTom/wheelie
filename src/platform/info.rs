@@ -25,12 +25,19 @@ const CAPTURE_IS_LIMITED: bool = true;
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 const CAPTURE_IS_LIMITED: bool = false;
 
+/// `enigo` 0.6.1 only exposes brightness keys on macOS.
+#[cfg(target_os = "macos")]
+const BRIGHTNESS_SUPPORTED: bool = true;
+#[cfg(not(target_os = "macos"))]
+const BRIGHTNESS_SUPPORTED: bool = false;
+
 /// Returns the capabilities of the current platform.
 pub const fn info() -> PlatformInfo {
     PlatformInfo {
         os: OS_NAME,
         capture: CAPTURE,
         capture_is_limited: CAPTURE_IS_LIMITED,
+        brightness_supported: BRIGHTNESS_SUPPORTED,
     }
 }
 

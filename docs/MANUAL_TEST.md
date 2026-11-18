@@ -22,8 +22,9 @@ each target platform before a release.
 
 ## Action sets
 
-- [ ] Open **Actions**: the volume, brightness and scroll sets are listed, each
-      with an icon.
+- [ ] Open **Actions**: the volume, vertical scroll and horizontal scroll sets are
+      listed, each with an icon. On macOS the brightness set is listed too; on
+      Windows and Linux it is absent and brightness is not offered in the picker.
 - [ ] Create a set, rename it, pick another icon and assign actions.
 - [ ] Delete a set: it disappears from the wheel, and the active set moves to the
       first remaining set when it was active.

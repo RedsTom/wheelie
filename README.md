@@ -22,10 +22,12 @@ Wheelie is not affiliated with Microsoft.
 - Radial overlay centered on the primary screen, navigated with the knob or the
   mouse. Each sector is an action set with its own icon; confirming one makes it
   the active set.
-- Action sets: volume, brightness and scroll by default, and as many more as you
-  like, each with a name, an icon and three actions.
-- Actions: volume, brightness, scroll, macros, keyboard shortcuts, mouse clicks,
-  media keys and app launching.
+- Action sets: volume, brightness (where the system accepts it), vertical and
+  horizontal scroll by default, and as many more as you like, each with a name,
+  a Phosphor icon and three actions.
+- Actions: volume, brightness (macOS), scroll, macros, keyboard shortcuts, mouse
+  clicks, media keys and app launching. Brightness is only offered when the input
+  backend supports it.
 - Macro editor with key, text, delay, mouse click and scroll steps.
 - Tray icon with show/hide, pause/resume and quit; closing settings keeps Wheelie
   running in the tray.
@@ -53,6 +55,7 @@ the reason and keeps running without a tray icon.
 - `global-hotkey` for exclusive global hotkeys.
 - `enigo` for cross-platform input simulation.
 - `tray-icon` for the system tray.
+- `egui-phosphor` for the icon set.
 - `serde` + `toml` for configuration.
 - Inter font (OFL-1.1), bundled in `assets/fonts`.
 - No Tauri, WebView, async runtime or kernel driver.

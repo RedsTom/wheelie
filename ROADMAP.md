@@ -55,8 +55,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 - [x] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
 - [x] Settings: General, Devices, Actions, Macros, About.
-- [x] Action sets with names and icons, selected from the wheel (volume,
-  brightness and scroll by default).
+- [x] Action sets with names and Phosphor icons, selected from the wheel (volume,
+  brightness where supported, vertical and horizontal scroll by default).
 - [x] Knob key picker with live test button.
 - [x] Radial overlay centered on the primary screen.
 - [x] Knob and mouse navigation in the overlay.
