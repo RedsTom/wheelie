@@ -7,7 +7,7 @@
 
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
-use gpui::{App, ClickEvent, FocusHandle, KeyDownEvent, Rgba, Window, div, px};
+use gpui::{App, ClickEvent, FocusHandle, KeyDownEvent, Rgba, Window, deferred, div, px};
 
 /// Edit operations emitted by [`text_field`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -491,22 +491,24 @@ pub fn select_menu(
         })
         .collect::<Vec<_>>();
 
-    div()
-        .id(format!("{id}-menu"))
-        .absolute()
-        .top(px(style::CONTROL_HEIGHT + 4.0))
-        .left(px(0.0))
-        .w_full()
-        .max_h(px(260.0))
-        .overflow_scroll()
-        .flex()
-        .flex_col()
-        .rounded(px(style::RADIUS_CONTROL))
-        .border_1()
-        .border_color(t.border)
-        .bg(t.card)
-        .shadow_lg()
-        .children(items)
+    deferred(
+        div()
+            .id(format!("{id}-menu"))
+            .absolute()
+            .top(px(style::CONTROL_HEIGHT + 4.0))
+            .left(px(0.0))
+            .w_full()
+            .max_h(px(260.0))
+            .overflow_scroll()
+            .flex()
+            .flex_col()
+            .rounded(px(style::RADIUS_CONTROL))
+            .border_1()
+            .border_color(t.border)
+            .bg(t.card)
+            .shadow_lg()
+            .children(items),
+    )
 }
 
 /// Parameters for one text field render.
