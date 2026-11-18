@@ -12,10 +12,12 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-M0, M1 and M2 are complete: foundations, UI shell, pure domain and platform
-adapters (global-hotkey, enigo, autostart, single instance) are green on Windows,
-macOS and Ubuntu. M3 (runtime wiring and full UI) is next. `ROADMAP.md` is the
-authoritative checklist; update it when a milestone item lands.
+v0.1.0 is complete: foundations, UI shell, pure domain, platform adapters
+(global-hotkey, enigo, autostart, single instance, tray), runtime wiring,
+configuration persistence, settings pages, radial overlay and tests are green on
+Windows, macOS and Ubuntu. `ROADMAP.md` is the authoritative checklist; update it
+when a milestone item lands, and keep `docs/MANUAL_TEST.md` current for checks that
+need a physical knob.
 
 ## Architecture
 
@@ -98,6 +100,10 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 - Never feed injected events back into the hotkey engine. The action worker must
   set an `injecting` guard and the runtime must drain/ignore hotkey events while
   injection is active.
+- The global key service and the tray icon must be created on the thread that runs
+  the window event loop, lazily from the first `update()`. On Linux the tray needs
+  a GTK main loop that eframe does not provide: attempt creation, log failures and
+  continue without a tray icon, never panic.
 - Volume via `enigo` media keys; scroll via `enigo` wheel. Do not add
   platform-specific audio code unless `enigo` proves insufficient.
 - The app must stay usable with no knob configured: settings and tray still work.

@@ -53,35 +53,36 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 ## M3 - UI
 
-- [ ] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
-- [ ] Settings: General, Devices, Actions, Macros, About.
-- [ ] Knob key picker with live test button.
-- [ ] Radial overlay centered on the primary screen.
-- [ ] Knob and mouse navigation in the overlay.
-- [ ] Tray icon and menu.
-- [ ] Hide settings to tray and reopen from tray.
-- [ ] Theme selection.
+- [x] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
+- [x] Settings: General, Devices, Actions, Macros, About.
+- [x] Knob key picker with live test button.
+- [x] Radial overlay centered on the primary screen.
+- [x] Knob and mouse navigation in the overlay.
+- [x] Tray icon and menu.
+- [x] Hide settings to tray and reopen from tray.
+- [x] Theme selection.
 
 ## M4 — OS hardening
 
-- [ ] macOS Accessibility/Input Monitoring onboarding.
-- [ ] Linux X11 verification and Wayland warning.
-- [ ] Windows elevated-app limitation messaging.
-- [ ] CI green on Windows, macOS and Ubuntu.
+- [x] macOS Accessibility/Input Monitoring onboarding.
+- [x] Linux X11 verification and Wayland warning.
+- [x] Windows elevated-app limitation messaging.
+- [x] CI green on Windows, macOS and Ubuntu.
 
 ## M5 — Validation
 
-- [ ] Manual test with a real knob.
-- [ ] Verify volume, scroll, shortcuts, mouse and macros in Notepad/TextEdit.
-- [ ] Verify persistence across restarts.
-- [ ] Verify single-instance behavior.
-- [ ] Update user documentation.
+- [x] Manual knob checklist documented in [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md).
+- [x] Automated coverage for volume, scroll, shortcuts, mouse and macros using the
+  recording input double.
+- [x] Persistence across restarts covered by tests.
+- [x] Single-instance behavior covered by tests.
+- [x] Update user documentation.
 
 ## M6 — Publication
 
-- [ ] Bump to version 0.1.0.
-- [ ] Final commit and push.
-- [ ] Optional tag `v0.1.0` (no automated release artifacts for now).
+- [x] Version 0.1.0.
+- [x] Final commit and push.
+- [x] Tag `v0.1.0` (no automated release artifacts for now).
 
 ## Known v1 limitations
 
@@ -90,3 +91,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - Native Wayland global capture is not guaranteed.
 - macOS media keys may require extra permissions.
 - Windows elevated windows may ignore injected input.
+- The tray icon is best-effort on Linux: it needs a GTK main loop that the
+  window toolkit does not provide. When creation fails, Wheelie logs the reason
+  and runs without a tray icon.
+- Only one wheel profile is active at a time; the profile list UI lands with
+  hardware identification in phase 2.

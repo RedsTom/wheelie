@@ -8,33 +8,39 @@ Windows Wheel itself. You assign the keys your keyboard software emits for knob
 left, knob right and knob press; Wheelie captures them exclusively and runs its own
 actions.
 
-> **Status: M0, M1 and M2 complete.** The single-crate module layout, CI, license,
-> documentation, Fluent-inspired settings shell, pure domain model and platform
-> adapters are in place. M3 (runtime wiring and full UI) is next; progress is
-> tracked in [`ROADMAP.md`](ROADMAP.md).
+> **Status: v0.1.0.** The full application is implemented: runtime wiring,
+> configuration persistence, settings pages, radial overlay, tray icon, platform
+> notices and tests. Progress is tracked in [`ROADMAP.md`](ROADMAP.md); physical
+> knob verification follows the checklist in [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md).
 
 Wheelie is not affiliated with Microsoft.
 
-## Planned features
+## Features
 
 - Knob left/right/press key assignment with a live test button.
 - Exclusive global capture of the configured keys.
-- Radial overlay centered on the primary screen.
-- Actions: volume, scroll, macros, keyboard shortcuts, mouse clicks, app launching.
+- Radial overlay centered on the primary screen, navigated with the knob or the mouse.
+- Actions: volume, scroll, macros, keyboard shortcuts, mouse clicks, media keys and
+  app launching.
 - Macro editor with key, text, delay, mouse click and scroll steps.
-- Tray icon with pause/resume, show wheel, settings and quit.
+- Tray icon with show/hide, pause/resume and quit; closing settings keeps Wheelie
+  running in the tray.
 - Optional start at login.
-- French and English user interface.
+- French and English user interface, dark and light themes.
 - Windows, macOS and Linux X11. Wayland is best-effort and clearly warned about.
 
 ## Platform support
 
 | Platform | Global capture | Status |
 | --- | --- | --- |
-| Windows 10/11 | Exclusive global hotkeys | Primary target |
-| macOS | Global hotkeys; Accessibility/Input Monitoring may be required for media keys | Planned |
-| Linux X11 | Exclusive X11 grabs | Planned |
+| Windows 10/11 | Exclusive global hotkeys | Supported |
+| macOS | Global hotkeys; Accessibility/Input Monitoring may be required for media keys | Supported with permissions |
+| Linux X11 | Exclusive X11 grabs | Supported |
 | Linux Wayland | Best-effort; native global capture is not generally available | Documented limitation |
+
+The tray icon is best-effort on Linux: it needs a GTK main loop on the window
+thread, which the UI toolkit does not provide. When creation fails, Wheelie logs
+the reason and keeps running without a tray icon.
 
 ## Stack
 
@@ -61,6 +67,22 @@ src/ui/           eframe views and widgets
 Dependency direction: `core → platform → app → ui`. The root binary only wires
 dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follow.
 
+## Using Wheelie
+
+1. Open **Devices** and pick the keys your keyboard software sends for knob left,
+   knob right and knob press. The three keys must be different; the live check
+   shows the last key received.
+2. Open **Actions** and choose what each control does.
+3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
+   mouse clicks.
+4. Press the knob twice to open the wheel. Rotate to move the selection, press to
+   confirm, or use the mouse. `Esc` closes it. A single knob press runs the press
+   action after the double-click window (350 ms by default).
+
+Closing the settings window hides Wheelie to the tray. Use the tray menu to show
+the window again, pause or resume knob detection, or quit. Only one Wheelie
+instance runs at a time.
+
 ## Development
 
 ```bash
@@ -81,7 +103,16 @@ GTK/X11/Wayland development packages listed in `.github/workflows/ci.yml`.
 | Linux | `~/.config/wheelie/config.toml` |
 | macOS | `~/Library/Application Support/Wheelie/config.toml` |
 
-Logs are written to the platform data directory under `Wheelie/logs/`.
+Logs are written to the platform data directory under `Wheelie/logs/`. The
+configuration is written atomically; a file that cannot be read is kept as
+`config.toml.bak` and Wheelie starts from defaults. Unknown fields are ignored so
+older documents keep working.
+
+## Verification
+
+Automated tests cover the domain rules, configuration persistence, the action
+worker and platform adapters with mocks. Physical knob verification is manual:
+follow [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md).
 
 ## License
 
