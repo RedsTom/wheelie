@@ -111,6 +111,8 @@ pub enum SetIcon {
     Leaf,
     /// Crescent moon.
     Moon,
+    /// Prohibition sign.
+    Prohibit,
 }
 
 impl SetIcon {
@@ -165,6 +167,7 @@ impl SetIcon {
         Self::Fire,
         Self::Leaf,
         Self::Moon,
+        Self::Prohibit,
     ];
 }
 
@@ -203,6 +206,17 @@ pub const BRIGHTNESS_SET_ID: &str = "brightness";
 pub const SCROLL_SET_ID: &str = "scroll";
 /// Identifier of the default horizontal scroll set.
 pub const SCROLL_HORIZONTAL_SET_ID: &str = "scroll-horizontal";
+/// Identifier of the default "no action" set.
+pub const NONE_SET_ID: &str = "none";
+
+/// Set that disables every knob control.
+pub fn none_set(language: Language) -> ActionSet {
+    ActionSet::new(
+        NONE_SET_ID,
+        tr(language, TextKey::SetNone),
+        SetIcon::Prohibit,
+    )
+}
 
 /// Default sets offered on a fresh configuration.
 ///
@@ -258,6 +272,7 @@ pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<Actio
     };
     sets.push(scroll);
     sets.push(horizontal_scroll_set(language));
+    sets.push(none_set(language));
 
     sets
 }
@@ -310,26 +325,30 @@ mod tests {
     #[test]
     fn default_sets_cover_volume_brightness_and_both_scroll_axes() {
         let sets = default_sets(Language::Fr, true);
-        assert_eq!(sets.len(), 4);
+        assert_eq!(sets.len(), 5);
         assert_eq!(sets[0].id, VOLUME_SET_ID);
         assert_eq!(sets[1].id, BRIGHTNESS_SET_ID);
         assert_eq!(sets[2].id, SCROLL_SET_ID);
         assert_eq!(sets[3].id, SCROLL_HORIZONTAL_SET_ID);
+        assert_eq!(sets[4].id, NONE_SET_ID);
         assert_eq!(sets[0].name, "Volume");
         assert_eq!(sets[1].name, "Luminosité");
         assert_eq!(sets[2].name, "Défilement");
         assert_eq!(sets[3].name, "Défilement horizontal");
+        assert_eq!(sets[4].name, "Aucune action");
         assert_eq!(sets[0].icon, SetIcon::Volume);
         assert_eq!(sets[3].icon, SetIcon::ScrollHorizontal);
+        assert_eq!(sets[4].icon, SetIcon::Prohibit);
     }
 
     #[test]
     fn brightness_set_is_omitted_without_backend_support() {
         let sets = default_sets(Language::En, false);
-        assert_eq!(sets.len(), 3);
+        assert_eq!(sets.len(), 4);
         assert!(sets.iter().all(|set| set.id != BRIGHTNESS_SET_ID));
         assert_eq!(sets[1].id, SCROLL_SET_ID);
         assert_eq!(sets[2].id, SCROLL_HORIZONTAL_SET_ID);
+        assert_eq!(sets[3].id, NONE_SET_ID);
     }
 
     #[test]

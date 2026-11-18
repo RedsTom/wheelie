@@ -79,8 +79,10 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 1. Open **Devices** and pick the keys your keyboard software sends for knob left,
    knob right and knob press. The three keys must be different; the live check
    shows the last key received.
-2. Open **Actions** to create action sets. Each set has a name, an icon and one
-   action for left rotation, one for right rotation and one for the press.
+2. Open **Actions** to create action sets. The wheel preview on the left selects a
+   set; arrow buttons move it around the wheel and the right side edits its name,
+   icon and three actions. A "No action" set ships by default so the knob can be
+   parked without side effects.
 3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
    mouse clicks.
 4. Press the knob twice to open the wheel. Rotate to move between sets, press to

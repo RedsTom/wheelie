@@ -61,6 +61,7 @@ pub fn glyph(icon: SetIcon) -> &'static str {
         SetIcon::Fire => ph::FIRE,
         SetIcon::Leaf => ph::LEAF,
         SetIcon::Moon => ph::MOON,
+        SetIcon::Prohibit => ph::PROHIBIT,
     }
 }
 

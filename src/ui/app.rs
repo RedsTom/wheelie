@@ -19,7 +19,7 @@ use crate::ui::overlay::{self, OverlayOutcome, OverlayState};
 use crate::ui::settings::{self, PageContext, SettingsTab, UiPreferences};
 use crate::ui::{theme, widgets};
 use eframe::egui;
-use egui::{Margin, RichText, Stroke, ViewportCommand, ViewportId};
+use egui::{Margin, RichText, Stroke, ViewportCommand};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
@@ -49,8 +49,13 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn overlay_viewport_id() -> ViewportId {
-    ViewportId::from_hash_of("wheelie-wheel-overlay")
+/// Settings window geometry remembered while the wheel borrows the window.
+#[derive(Debug, Clone, Copy)]
+struct SavedWindow {
+    position: Option<egui::Pos2>,
+    size: egui::Vec2,
+    maximized: bool,
+    hidden: bool,
 }
 
 struct WheelieApp {
@@ -75,6 +80,7 @@ struct WheelieApp {
     tray_failed: bool,
     hidden: bool,
     quitting: bool,
+    wheel_saved: Option<SavedWindow>,
 }
 
 impl WheelieApp {
@@ -120,6 +126,7 @@ impl WheelieApp {
             tray_failed: false,
             hidden: false,
             quitting: false,
+            wheel_saved: None,
         }
     }
 
@@ -571,17 +578,74 @@ impl WheelieApp {
         }
     }
 
-    fn show_overlay(&mut self, ctx: &egui::Context) {
-        if !self.overlay.open {
+    /// Turns the settings window into the wheel window.
+    ///
+    /// A secondary egui viewport cannot be made transparent with the wgpu
+    /// backend on Windows, so the wheel borrows the root window: undecorated,
+    /// always on top and resized around the wheel, then restored on close.
+    fn enter_wheel_mode(&mut self, ctx: &egui::Context) {
+        if self.wheel_saved.is_some() {
             return;
         }
 
-        let sets = self.runtime.config().action_sets;
-        let id = overlay_viewport_id();
-
-        ctx.show_viewport_immediate(id, overlay::viewport_builder(), |overlay_ctx, _class| {
-            overlay::draw(overlay_ctx, &sets, &mut self.overlay);
+        let (position, size, maximized) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                viewport.outer_rect.map(|rect| rect.min),
+                viewport
+                    .inner_rect
+                    .map(|rect| rect.size())
+                    .unwrap_or(egui::vec2(1180.0, 760.0)),
+                viewport.maximized.unwrap_or(false),
+            )
         });
+
+        self.wheel_saved = Some(SavedWindow {
+            position,
+            size,
+            maximized,
+            hidden: self.hidden,
+        });
+        self.hidden = false;
+
+        ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(ViewportCommand::Maximized(false));
+        ctx.send_viewport_cmd(ViewportCommand::Decorations(false));
+        ctx.send_viewport_cmd(ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+        ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(
+            overlay::OVERLAY_SIZE,
+            overlay::OVERLAY_SIZE,
+        )));
+        ctx.send_viewport_cmd(ViewportCommand::Focus);
+    }
+
+    /// Restores the settings window after the wheel closes.
+    fn exit_wheel_mode(&mut self, ctx: &egui::Context) {
+        let Some(saved) = self.wheel_saved.take() else {
+            return;
+        };
+
+        ctx.send_viewport_cmd(ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+        ctx.send_viewport_cmd(ViewportCommand::Decorations(true));
+
+        if saved.maximized {
+            ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
+        } else {
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(saved.size));
+            if let Some(position) = saved.position {
+                ctx.send_viewport_cmd(ViewportCommand::OuterPosition(position));
+            }
+        }
+
+        if saved.hidden {
+            self.hidden = true;
+            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+        }
+    }
+
+    fn draw_wheel(&mut self, ctx: &egui::Context) {
+        let sets = self.runtime.config().action_sets;
+        overlay::draw(ctx, &sets, &mut self.overlay);
 
         match self.overlay.outcome.take() {
             Some(OverlayOutcome::Close) => self.close_overlay(),
@@ -591,17 +655,13 @@ impl WheelieApp {
             }
             None => {}
         }
-
-        if !self.overlay.open {
-            ctx.send_viewport_cmd_to(id, ViewportCommand::Close);
-        }
     }
 }
 
 impl eframe::App for WheelieApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         // Fully transparent: the settings window paints its own background and
-        // the wheel viewport relies on the alpha channel being cleared.
+        // the wheel uses the same window with nothing behind the ring.
         [0.0, 0.0, 0.0, 0.0]
     }
 
@@ -611,8 +671,11 @@ impl eframe::App for WheelieApp {
         self.persist_preferences();
         self.ensure_services();
         self.sync_from_config();
-        self.handle_close_request(ctx);
         self.poll_tray(ctx);
+
+        if !self.overlay.open {
+            self.handle_close_request(ctx);
+        }
 
         if !self.quitting {
             self.apply_hotkeys_if_needed();
@@ -620,8 +683,13 @@ impl eframe::App for WheelieApp {
             self.tick_detector(ctx);
         }
 
-        self.settings_panels(ctx);
-        self.show_overlay(ctx);
+        if self.overlay.open {
+            self.enter_wheel_mode(ctx);
+            self.draw_wheel(ctx);
+        } else {
+            self.exit_wheel_mode(ctx);
+            self.settings_panels(ctx);
+        }
 
         // Keep polling while the window is hidden so knob input still works.
         ctx.request_repaint_after(Duration::from_millis(35));

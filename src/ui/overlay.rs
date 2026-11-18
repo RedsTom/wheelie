@@ -67,20 +67,6 @@ impl OverlayState {
     }
 }
 
-/// Builder for the overlay viewport.
-pub fn viewport_builder() -> egui::ViewportBuilder {
-    egui::ViewportBuilder::default()
-        .with_inner_size([OVERLAY_SIZE, OVERLAY_SIZE])
-        .with_min_inner_size([OVERLAY_SIZE, OVERLAY_SIZE])
-        .with_max_inner_size([OVERLAY_SIZE, OVERLAY_SIZE])
-        .with_resizable(false)
-        .with_decorations(false)
-        .with_transparent(true)
-        .with_always_on_top()
-        .with_active(true)
-        .with_title("Wheelie")
-}
-
 /// Draws the wheel and records the outcome in `state`.
 pub fn draw(ctx: &egui::Context, sets: &[ActionSet], state: &mut OverlayState) {
     let mut visuals = egui::Visuals::dark();

@@ -109,6 +109,12 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
   the window event loop, lazily from the first `update()`. On Linux the tray needs
   a GTK main loop that eframe does not provide: attempt creation, log failures and
   continue without a tray icon, never panic.
+- The wheel must render in the root window, not in a secondary egui viewport:
+  secondary viewports composite onto an opaque background with the wgpu backend on
+  Windows (black or white rectangle). The shell borrows the root window for the
+  wheel (undecorated, always on top, resized and recentred) and restores the
+  settings geometry afterwards. Keep the app transparent in `NativeOptions` and
+  return an alpha-0 `clear_color`.
 - Volume via `enigo` media keys; scroll via `enigo` wheel. Brightness uses
   `enigo` brightness keys, which only exist on macOS in 0.6.1; report the action
   as unavailable elsewhere instead of adding platform audio/display code.

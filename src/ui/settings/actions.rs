@@ -3,12 +3,14 @@
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
 use crate::core::profile::Actions;
 use crate::core::{
-    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey, tr,
+    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey,
+    WheelGeometry, tr,
 };
 use crate::ui::settings::{PageContext, warning};
 use crate::ui::{icons, theme, widgets};
 use eframe::egui;
-use egui::{Align2, FontId};
+use egui::{Align2, FontId, Sense, Stroke, Vec2};
+use egui_phosphor::regular as ph;
 use std::path::PathBuf;
 
 pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
@@ -34,11 +36,9 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
 
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
-            ui.set_width(220.0);
-            if widgets::secondary_button(ui, tr(language, TextKey::AddSetButton)).clicked() {
-                sets.push(new_set(&sets, language));
-                selected = Some(sets.len() - 1);
-                changed = true;
+            ui.set_width(320.0);
+            if let Some(clicked) = wheel_preview(ui, &sets, selected) {
+                selected = Some(clicked);
             }
 
             ui.add_space(10.0);
@@ -48,33 +48,45 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
                         .size(12.0)
                         .color(theme::muted(ui)),
                 );
-            } else {
-                for (index, set) in sets.iter().enumerate() {
-                    let is_active = active.as_deref() == Some(set.id.as_str());
-                    if set_row(ui, set, selected == Some(index), is_active) {
-                        selected = Some(index);
-                    }
-                }
+                ui.add_space(8.0);
             }
 
-            if let Some(index) = selected {
-                ui.add_space(10.0);
-                if widgets::secondary_button(ui, tr(language, TextKey::DeleteSetButton)).clicked() {
-                    let removed = sets.remove(index);
-                    if active.as_deref() == Some(removed.id.as_str()) {
-                        active = sets.first().map(|set| set.id.clone());
-                    }
-                    selected = if sets.is_empty() {
-                        None
-                    } else {
-                        Some(index.min(sets.len() - 1))
-                    };
+            ui.horizontal(|ui| {
+                if widgets::secondary_button(
+                    ui,
+                    &format!("{}  {}", ph::PLUS, tr(language, TextKey::AddSetButton)),
+                )
+                .clicked()
+                {
+                    sets.push(new_set(&sets, language));
+                    selected = Some(sets.len() - 1);
                     changed = true;
                 }
-            }
+
+                if let Some(index) = selected {
+                    if index > 0
+                        && small_icon_button(ui, ph::CARET_LEFT, tr(language, TextKey::MoveSetLeft))
+                    {
+                        sets.swap(index, index - 1);
+                        selected = Some(index - 1);
+                        changed = true;
+                    }
+                    if index + 1 < sets.len()
+                        && small_icon_button(
+                            ui,
+                            ph::CARET_RIGHT,
+                            tr(language, TextKey::MoveSetRight),
+                        )
+                    {
+                        sets.swap(index, index + 1);
+                        selected = Some(index + 1);
+                        changed = true;
+                    }
+                }
+            });
         });
 
-        ui.add_space(16.0);
+        ui.add_space(20.0);
 
         ui.vertical(|ui| {
             if let Some(index) = selected
@@ -91,6 +103,33 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
                 ) {
                     changed = true;
                 }
+
+                ui.add_space(14.0);
+                ui.separator();
+                ui.add_space(8.0);
+                if widgets::secondary_button(
+                    ui,
+                    &format!("{}  {}", ph::TRASH, tr(language, TextKey::DeleteSetButton)),
+                )
+                .clicked()
+                {
+                    let removed = sets.remove(index);
+                    if active.as_deref() == Some(removed.id.as_str()) {
+                        active = sets.first().map(|set| set.id.clone());
+                    }
+                    selected = if sets.is_empty() {
+                        None
+                    } else {
+                        Some(index.min(sets.len() - 1))
+                    };
+                    changed = true;
+                }
+            } else if sets.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr(language, TextKey::EmptyActionsTitle))
+                        .font(theme::heading_font(15.0))
+                        .color(theme::card_text(ui)),
+                );
             }
         });
     });
@@ -169,45 +208,108 @@ fn editor(
     changed
 }
 
-fn set_row(ui: &mut egui::Ui, set: &ActionSet, selected: bool, active: bool) -> bool {
-    let width = ui.available_width();
-    let height = theme::CONTROL_HEIGHT + 6.0;
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+fn wheel_preview(ui: &mut egui::Ui, sets: &[ActionSet], selected: Option<usize>) -> Option<usize> {
+    let size = 300.0;
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    let geometry = WheelGeometry::from_size(size);
+    let center = rect.min + egui::vec2(geometry.center_x, geometry.center_y);
     let painter = ui.painter().clone();
 
-    if selected {
-        painter.rect_filled(rect, 4, theme::accent_soft());
-    } else if response.hovered() {
-        painter.rect_filled(rect, 4, ui.visuals().widgets.hovered.weak_bg_fill);
+    let base = egui::Color32::from_rgb(24, 28, 38);
+    let hovered = response.hover_pos().and_then(|position| {
+        let local = position - rect.min;
+        geometry.sector_at(sets.len(), local.x, local.y)
+    });
+
+    if sets.is_empty() {
+        painter.circle_filled(center, geometry.outer_radius, base);
+        return None;
     }
 
-    let color = if selected {
-        theme::accent(ui)
-    } else {
-        ui.visuals().widgets.inactive.fg_stroke.color
-    };
-    let icon_rect = egui::Rect::from_center_size(
-        rect.left_center() + egui::vec2(18.0, 0.0),
-        egui::Vec2::splat(18.0),
-    );
-    icons::paint(&painter, icon_rect, set.icon, color);
-    painter.text(
-        rect.left_center() + egui::vec2(36.0, 0.0),
-        Align2::LEFT_CENTER,
-        &set.name,
-        FontId::proportional(13.5),
-        color,
-    );
-    if active {
-        painter.circle_filled(
-            rect.right_center() - egui::vec2(14.0, 0.0),
-            4.0,
-            theme::SUCCESS,
+    for (index, set) in sets.iter().enumerate() {
+        let Some((start, end)) = geometry.sector_angles(index, sets.len()) else {
+            continue;
+        };
+        let is_selected = selected == Some(index);
+        let fill = if is_selected {
+            theme::ACCENT
+        } else if hovered == Some(index) {
+            egui::Color32::from_rgb(38, 44, 58)
+        } else {
+            base
+        };
+
+        painter.add(egui::Shape::convex_polygon(
+            sector_points(center, &geometry, start, end),
+            fill,
+            Stroke::NONE,
+        ));
+
+        let mid = (start + end) / 2.0;
+        let icon_radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
+        let icon_center = center + egui::vec2(mid.cos(), mid.sin()) * icon_radius;
+        icons::paint(
+            &painter,
+            egui::Rect::from_center_size(icon_center, Vec2::splat(26.0)),
+            set.icon,
+            if is_selected {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_white_alpha(220)
+            },
         );
     }
 
-    response
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+    painter.circle_filled(center, geometry.inner_radius * 0.92, base);
+    if let Some(set) = selected
+        .and_then(|index| sets.get(index))
+        .or_else(|| sets.first())
+    {
+        icons::paint(
+            &painter,
+            egui::Rect::from_center_size(center, Vec2::splat(geometry.inner_radius * 1.1)),
+            set.icon,
+            egui::Color32::WHITE,
+        );
+        painter.text(
+            rect.center_bottom() - egui::vec2(0.0, 8.0),
+            Align2::CENTER_BOTTOM,
+            &set.name,
+            FontId::proportional(12.0),
+            theme::muted(ui),
+        );
+    }
+
+    if !response.clicked() {
+        return None;
+    }
+    let position = response.interact_pointer_pos()?;
+    let local = position - rect.min;
+    geometry.sector_at(sets.len(), local.x, local.y)
+}
+
+fn sector_points(
+    center: egui::Pos2,
+    geometry: &WheelGeometry,
+    start: f32,
+    end: f32,
+) -> Vec<egui::Pos2> {
+    let steps = ((end - start) / 0.12).ceil().max(4.0) as usize;
+    let mut points = Vec::with_capacity((steps + 1) * 2);
+    for index in 0..=steps {
+        let angle = start + (end - start) * index as f32 / steps as f32;
+        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.outer_radius);
+    }
+    for index in (0..=steps).rev() {
+        let angle = start + (end - start) * index as f32 / steps as f32;
+        points.push(center + egui::vec2(angle.cos(), angle.sin()) * geometry.inner_radius);
+    }
+    points
+}
+
+fn small_icon_button(ui: &mut egui::Ui, glyph: &str, tooltip: &str) -> bool {
+    ui.add(egui::Button::new(egui::RichText::new(glyph).size(14.0)).frame(false))
+        .on_hover_text(tooltip.to_owned())
         .clicked()
 }
 

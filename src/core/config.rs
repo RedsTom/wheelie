@@ -1,7 +1,7 @@
 //! Versioned application configuration.
 
 use crate::core::action_set::{
-    ActionSet, SCROLL_HORIZONTAL_SET_ID, default_sets, horizontal_scroll_set,
+    ActionSet, NONE_SET_ID, SCROLL_HORIZONTAL_SET_ID, default_sets, horizontal_scroll_set, none_set,
 };
 use crate::core::gesture::{GestureConfig, GestureConfigError};
 use crate::core::i18n::Language;
@@ -15,13 +15,15 @@ use thiserror::Error;
 /// Current configuration schema version.
 ///
 /// Version 2 adds the action sets selectable from the wheel; version 3 adds the
-/// default horizontal scroll set.
-pub const CONFIG_VERSION: u32 = 3;
+/// default horizontal scroll set; version 4 adds the "no action" set.
+pub const CONFIG_VERSION: u32 = 4;
 
 /// First schema version, kept so old documents can be upgraded in place.
 const LEGACY_VERSION_1: u32 = 1;
 /// Second schema version.
 const LEGACY_VERSION_2: u32 = 2;
+/// Third schema version.
+const LEGACY_VERSION_3: u32 = 3;
 
 fn default_true() -> bool {
     true
@@ -301,6 +303,15 @@ impl Config {
             {
                 self.action_sets.push(horizontal_scroll_set(self.language));
             }
+            self.version = LEGACY_VERSION_3;
+        }
+
+        if self.version == LEGACY_VERSION_3 {
+            if !self.action_sets.is_empty()
+                && !self.action_sets.iter().any(|set| set.id == NONE_SET_ID)
+            {
+                self.action_sets.push(none_set(self.language));
+            }
             self.version = CONFIG_VERSION;
         }
     }
@@ -413,7 +424,7 @@ mod tests {
         assert_eq!(config.version, CONFIG_VERSION);
         assert!(config.active_profile().is_some());
         assert!(config.active_set().is_some());
-        assert_eq!(config.action_sets.len(), 4);
+        assert_eq!(config.action_sets.len(), 5);
     }
 
     #[test]
@@ -448,7 +459,7 @@ mod tests {
 
         let parsed = Config::from_toml_str(&document).expect("upgrade");
         assert_eq!(parsed.version, CONFIG_VERSION);
-        assert_eq!(parsed.action_sets.len(), 4);
+        assert_eq!(parsed.action_sets.len(), 5);
         assert_eq!(parsed.active_set.as_deref(), Some(VOLUME_SET_ID));
         assert!(
             parsed
@@ -456,6 +467,7 @@ mod tests {
                 .iter()
                 .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
         );
+        assert!(parsed.action_sets.iter().any(|set| set.id == NONE_SET_ID));
     }
 
     #[test]

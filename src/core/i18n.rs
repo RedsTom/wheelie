@@ -204,6 +204,7 @@ pub enum TextKey {
     SetBrightness,
     SetScroll,
     SetScrollHorizontal,
+    SetNone,
     ActiveSetLabel,
     AddSetButton,
     DeleteSetButton,
@@ -212,6 +213,8 @@ pub enum TextKey {
     SetDefaultName,
     NoSetLabel,
     EmptyStepsLabel,
+    MoveSetLeft,
+    MoveSetRight,
 }
 
 impl TextKey {
@@ -363,6 +366,7 @@ impl TextKey {
         Self::SetBrightness,
         Self::SetScroll,
         Self::SetScrollHorizontal,
+        Self::SetNone,
         Self::ActiveSetLabel,
         Self::AddSetButton,
         Self::DeleteSetButton,
@@ -371,6 +375,8 @@ impl TextKey {
         Self::SetDefaultName,
         Self::NoSetLabel,
         Self::EmptyStepsLabel,
+        Self::MoveSetLeft,
+        Self::MoveSetRight,
     ];
 }
 
@@ -1114,6 +1120,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "Horizontal scroll",
     },
     Translation {
+        key: TextKey::SetNone,
+        fr: "Aucune action",
+        en: "No action",
+    },
+    Translation {
         key: TextKey::ActiveSetLabel,
         fr: "Groupe actif",
         en: "Active set",
@@ -1152,6 +1163,16 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::EmptyStepsLabel,
         fr: "Aucune étape pour l'instant. Ajoutez-en une ci-dessous.",
         en: "No steps yet. Add one below.",
+    },
+    Translation {
+        key: TextKey::MoveSetLeft,
+        fr: "Déplacer vers la gauche",
+        en: "Move left",
+    },
+    Translation {
+        key: TextKey::MoveSetRight,
+        fr: "Déplacer vers la droite",
+        en: "Move right",
     },
 ];
 
