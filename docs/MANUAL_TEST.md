@@ -31,6 +31,9 @@ each target platform before a release.
 - [ ] Repeat for right rotation and press.
 - [ ] Assign the same key to two controls: the warning appears and the change is
       refused.
+- [ ] In a shortcut field, press Volume Up, Volume Down and Mute: each key is
+      shown as the chosen key and the system volume does not change while the
+      field is waiting.
 - [ ] Restart Wheelie: the three assignments are still present.
 
 ## Action sets
