@@ -15,9 +15,10 @@ use crate::core::{
 };
 use crate::platform::{GlobalHotkeyService, InjectionGuard};
 use crate::ui::overlay::OverlayState;
+use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::PageState;
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{assets, gestures, pages, services, style, window};
+use crate::ui::{assets, gestures, overlay_window, pages, services, style, window};
 use gpui::prelude::*;
 use gpui::{
     App, AsyncApp, Bounds, Context, Pixels, QuitMode, Render, Window, WindowHandle, div, px,
@@ -75,6 +76,10 @@ pub struct ShellState {
     pub settings_window: Option<WindowHandle<SettingsView>>,
     /// Last known settings bounds, restored on recreate.
     pub settings_bounds: Option<Bounds<Pixels>>,
+    /// Open radial overlay window.
+    pub overlay_window: Option<WindowHandle<OverlayView>>,
+    /// Settings window was closed to show the overlay; restore after.
+    pub settings_hidden_for_overlay: bool,
 }
 
 /// Shared handle type.
@@ -122,6 +127,8 @@ impl ShellState {
             quitting: false,
             settings_window: None,
             settings_bounds: None,
+            overlay_window: None,
+            settings_hidden_for_overlay: false,
         }
     }
 }
@@ -371,6 +378,7 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
             window::close_settings(cx, shared);
             shared.borrow_mut().hidden = true;
         }
+        overlay_window::sync(cx, shared);
     }
 
     window::reap_closed(cx, shared);

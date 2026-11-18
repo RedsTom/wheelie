@@ -8,7 +8,7 @@ use crate::core::ThemeMode;
 use gpui::Rgba;
 
 /// Builds an opaque color from a `0xRRGGBB` literal (const-compatible).
-const fn rgb(hex: u32) -> Rgba {
+pub(crate) const fn rgb(hex: u32) -> Rgba {
     Rgba {
         r: ((hex >> 16) & 0xFF) as f32 / 255.0,
         g: ((hex >> 8) & 0xFF) as f32 / 255.0,
@@ -18,7 +18,7 @@ const fn rgb(hex: u32) -> Rgba {
 }
 
 /// Builds a color from a `0xRRGGBBAA` literal (const-compatible).
-const fn rgba(hex: u32) -> Rgba {
+pub(crate) const fn rgba(hex: u32) -> Rgba {
     Rgba {
         r: ((hex >> 24) & 0xFF) as f32 / 255.0,
         g: ((hex >> 16) & 0xFF) as f32 / 255.0,

@@ -53,6 +53,8 @@ pub struct PageState {
     pub selected_macro: Option<String>,
     /// Currently edited macro step (by index).
     pub selected_step: Option<usize>,
+    /// Hovered sector in the actions wheel preview.
+    pub preview_hovered: Option<usize>,
     /// Focus handle for the launch-path field (actions page).
     pub focus_path: FocusHandle,
     /// Buffer for the launch-path field.
@@ -80,6 +82,7 @@ impl PageState {
             selected_set: None,
             selected_macro: None,
             selected_step: None,
+            preview_hovered: None,
             focus_path: cx.focus_handle(),
             path_buffer: String::new(),
             path_buffer_fresh: true,

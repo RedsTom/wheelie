@@ -262,7 +262,7 @@ fn painter_titles(ui: &egui::Ui, sets: &[ActionSet], state: &OverlayState, y: f3
     }
 }
 
-fn truncate(text: &str, limit: usize) -> String {
+pub(crate) fn truncate(text: &str, limit: usize) -> String {
     if text.chars().count() <= limit {
         return text.to_owned();
     }

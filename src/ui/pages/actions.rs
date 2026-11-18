@@ -3,21 +3,23 @@
 use crate::app::RuntimeHandle;
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
 use crate::core::{
-    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey, tr,
+    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey,
+    WheelGeometry, tr,
 };
 use crate::ui::controls::{self, Edit};
 use crate::ui::iconset;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
+use crate::ui::wheel_paint;
 use gpui::prelude::*;
-use gpui::{AnyElement, App, ClickEvent, Context, Window, div, px};
+use gpui::{AnyElement, App, ClickEvent, Context, Window, canvas, div, point, px};
 use std::path::PathBuf;
 
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
     window: &Window,
-    _cx: &mut Context<SettingsView>,
+    cx: &mut Context<SettingsView>,
 ) -> impl IntoElement {
     let t = style::tokens(state.preferences.theme_mode);
     let language = state.preferences.language;
@@ -30,7 +32,7 @@ pub(crate) fn render(
         .selected_set
         .as_deref()
         .and_then(|id| sets.iter().position(|set| set.id == id))
-        .or_else(|| if sets.is_empty() { None } else { Some(0) });
+        .or(if sets.is_empty() { None } else { Some(0) });
 
     div()
         .flex()
@@ -46,7 +48,7 @@ pub(crate) fn render(
                 .flex()
                 .items_start()
                 .gap(px(20.0))
-                .child(set_column(state, shared, t, language, &sets, selected))
+                .child(set_column(state, shared, cx, t, language, &sets, selected))
                 .child(div().flex_1().min_w(px(0.0)).child(editor_column(
                     state, shared, window, t, language, &config, &sets, &active, selected,
                 ))),
@@ -60,6 +62,7 @@ pub(crate) fn render(
 fn set_column(
     state: &ShellState,
     shared: &Shared,
+    cx: &mut Context<SettingsView>,
     t: Tokens,
     language: Language,
     sets: &[ActionSet],
@@ -126,12 +129,15 @@ fn set_column(
     let right_shared = shared.clone();
     let right_runtime = state.runtime.clone();
 
+    let preview = preview_box(state, shared, cx, sets, selected);
+
     div()
         .flex_none()
         .w(px(320.0))
         .flex()
         .flex_col()
         .gap_3()
+        .child(preview)
         .child(
             div()
                 .rounded(px(style::RADIUS_CARD))
@@ -292,6 +298,7 @@ fn editor_column(
         .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn editor(
     state: &ShellState,
     shared: &Shared,
@@ -545,6 +552,7 @@ fn show_control(
         )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parameters(
     state: &ShellState,
     shared: &Shared,
@@ -920,6 +928,7 @@ fn enum_select(
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn number_editor(
     state: &ShellState,
     shared: &Shared,
@@ -1000,6 +1009,7 @@ fn set_numeric(action: &mut Action, value: i64) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn chord_picker(
     state: &ShellState,
     shared: &Shared,
@@ -1419,4 +1429,90 @@ fn media_label(language: Language, command: MediaCommand) -> &'static str {
         MediaCommand::Previous => tr(language, TextKey::ActionMediaPrevious),
         MediaCommand::Stop => tr(language, TextKey::ActionMediaStop),
     }
+}
+
+/// Clickable wheel preview above the set list (ported from the eframe page;
+/// geometry uses the full box like the old preview did).
+fn preview_box(
+    state: &ShellState,
+    shared: &Shared,
+    cx: &mut Context<SettingsView>,
+    sets: &[ActionSet],
+    selected: Option<usize>,
+) -> impl IntoElement {
+    const BOX: f32 = 300.0;
+    let geometry = WheelGeometry::from_size(BOX);
+    let center = point(px(BOX / 2.0), px(BOX / 2.0));
+    let origin = wheel_paint::origin(center, &geometry);
+    let selected_index = selected.unwrap_or(0);
+    let hovered = state.page.preview_hovered;
+    let title_y = BOX - 8.0;
+    let paint_sets = sets.to_vec();
+
+    let move_shared = shared.clone();
+    let move_weak = cx.weak_entity();
+    let down_shared = shared.clone();
+    let down_weak = cx.weak_entity();
+
+    div()
+        .id("set-preview")
+        .relative()
+        .w(px(BOX))
+        .h(px(BOX))
+        .child(
+            canvas(
+                |_, _, _| (),
+                move |_bounds, _, window, _| {
+                    wheel_paint::paint(
+                        window,
+                        &geometry,
+                        center,
+                        &paint_sets,
+                        selected_index,
+                        hovered,
+                    );
+                },
+            )
+            .absolute()
+            .inset_0(),
+        )
+        .children(wheel_paint::children(
+            &geometry,
+            origin,
+            title_y,
+            BOX,
+            sets,
+            selected_index,
+        ))
+        .on_mouse_move(move |event, _, cx| {
+            let count = move_shared.borrow().runtime.config().action_sets.len();
+            let hovered = wheel_paint::sector_at(&geometry, count, origin, event.position);
+            let mut state = move_shared.borrow_mut();
+            if state.page.preview_hovered != hovered {
+                state.page.preview_hovered = hovered;
+                if let Some(view) = move_weak.upgrade() {
+                    view.update(cx, |_, cx| cx.notify());
+                }
+            }
+        })
+        .on_mouse_down(gpui::MouseButton::Left, move |event, _, cx| {
+            let count = down_shared.borrow().runtime.config().action_sets.len();
+            let hit = wheel_paint::sector_at(&geometry, count, origin, event.position);
+            let Some(index) = hit else {
+                return;
+            };
+            let id = down_shared
+                .borrow()
+                .runtime
+                .config()
+                .action_sets
+                .get(index)
+                .map(|set| set.id.clone());
+            if let Some(id) = id {
+                down_shared.borrow_mut().page.selected_set = Some(id);
+                if let Some(view) = down_weak.upgrade() {
+                    view.update(cx, |_, cx| cx.notify());
+                }
+            }
+        })
 }

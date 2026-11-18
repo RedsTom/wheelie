@@ -10,12 +10,14 @@ pub mod gestures;
 pub mod icons;
 pub mod iconset;
 pub mod overlay;
+pub mod overlay_window;
 pub mod pages;
 pub mod services;
 pub mod settings;
 pub mod shell;
 pub mod style;
 pub mod theme;
+pub mod wheel_paint;
 pub mod widgets;
 pub mod window;
 
