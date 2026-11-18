@@ -76,7 +76,9 @@ pub struct ShellState {
     /// Quit requested.
     pub quitting: bool,
     /// Open settings window handle.
-    pub settings_window: Option<WindowHandle<SettingsView>>,
+    pub settings_window: Option<gpui::AnyWindowHandle>,
+    /// Root view of the settings window, used to request repaints.
+    pub settings_view: Option<gpui::Entity<SettingsView>>,
     /// Last known settings bounds, restored on recreate.
     pub settings_bounds: Option<Bounds<Pixels>>,
     /// Open radial overlay window.
@@ -145,6 +147,7 @@ impl ShellState {
             tray_failed: false,
             quitting: false,
             settings_window: None,
+            settings_view: None,
             settings_bounds: None,
             overlay_window: None,
             overlay_closing: None,

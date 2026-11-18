@@ -234,13 +234,22 @@ pub fn page_header(t: Tokens, title: &str, subtitle: &str) -> impl IntoElement {
 }
 
 /// Section title used inside a card.
-pub fn section_title(t: Tokens, title: &str, subtitle: Option<&str>) -> impl IntoElement {
+///
+/// `id` must be unique among the section titles of a page. `Label` derives its
+/// a11y node id from the call site, so several titles rendered from here would
+/// otherwise share one id and panic gpui's accessibility tree builder.
+pub fn section_title(
+    id: &'static str,
+    t: Tokens,
+    title: &str,
+    subtitle: Option<&str>,
+) -> impl IntoElement {
     let mut root = div().flex().flex_col().child(
         div()
             .text_size(px(16.0))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(t.text)
-            .child(Label::new(title.to_owned())),
+            .child(Label::new(title.to_owned()).id(id)),
     );
     if let Some(subtitle) = subtitle {
         root = root.child(
@@ -457,7 +466,11 @@ pub fn timeline_item(
 }
 
 /// Label/description row with a control aligned to the right.
+///
+/// `id` must be unique among the rows of a page; see [`section_title`] for why
+/// the explicit id is required.
 pub fn setting_row(
+    id: &'static str,
     t: Tokens,
     title: &str,
     description: &str,
@@ -479,7 +492,7 @@ pub fn setting_row(
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_size(px(14.0))
                         .text_color(t.text)
-                        .child(Label::new(title.to_owned())),
+                        .child(Label::new(title.to_owned()).id(id)),
                 )
                 .child(
                     div()

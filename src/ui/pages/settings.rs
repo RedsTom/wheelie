@@ -94,12 +94,14 @@ fn preferences_card(
             .flex()
             .flex_col()
             .child(controls::section_title(
+                "settings-section-preferences",
                 t,
                 tr(language, TextKey::PreferencesTitle),
                 Some(tr(language, TextKey::PreferencesBody)),
             ))
             .child(
                 div().mt(px(8.0)).child(controls::setting_row(
+                    "settings-row-theme",
                     t,
                     tr(language, TextKey::ThemeLabel),
                     tr(language, TextKey::ThemeDescription),
@@ -138,6 +140,7 @@ fn preferences_card(
             )
             .child(div().my(px(6.0)).child(separator(t)))
             .child(controls::setting_row(
+                "settings-row-language",
                 t,
                 tr(language, TextKey::LanguageLabel),
                 tr(language, TextKey::LanguageDescription),
@@ -175,6 +178,7 @@ fn preferences_card(
             ))
             .child(div().my(px(6.0)).child(separator(t)))
             .child(controls::setting_row(
+                "settings-row-autostart",
                 t,
                 tr(language, TextKey::StartAtLoginLabel),
                 tr(language, TextKey::StartAtLoginDescription),
@@ -264,6 +268,7 @@ fn platform_card(state: &ShellState, t: Tokens, language: Language) -> impl Into
             .flex_col()
             .gap_2()
             .child(controls::section_title(
+                "settings-section-platform",
                 t,
                 tr(language, TextKey::PlatformCardTitle),
                 None,
@@ -290,6 +295,7 @@ fn open_source_card(t: Tokens, language: Language) -> impl IntoElement {
             .flex_col()
             .gap_2()
             .child(controls::section_title(
+                "settings-section-open-source",
                 t,
                 tr(language, TextKey::OpenSourceTitle),
                 Some(tr(language, TextKey::OpenSourceBody)),

@@ -51,22 +51,29 @@ pub fn open_settings(cx: &mut App, shared: &Shared) {
     };
 
     let close_shared = shared.clone();
-    let handle = cx
-        .open_window(options, move |window, cx| {
-            register_close_behavior(window, cx, &close_shared);
-            let view_shared = close_shared.clone();
-            cx.new(move |_: &mut Context<SettingsView>| SettingsView {
-                shared: view_shared,
-            })
+    // gpui-component stores per-window state on `gpui_base::Root`. Opening the
+    // window with plain `cx.open_window` leaves that state missing and makes
+    // `open_alert_dialog` panic when a page opens a confirmation dialog.
+    let (handle, view) = gpui_kit::open_window(options, cx, move |window, cx| {
+        register_close_behavior(window, cx, &close_shared);
+        let view_shared = close_shared.clone();
+        cx.new(move |_: &mut Context<SettingsView>| SettingsView {
+            shared: view_shared,
         })
-        .expect("open settings window");
+    })
+    .expect("open settings window");
 
-    shared.borrow_mut().settings_window = Some(handle);
+    let mut state = shared.borrow_mut();
+    state.settings_window = Some(handle);
+    state.settings_view = Some(view);
 }
 
 /// Closes the settings window if open (used when quitting).
 pub fn close_settings(cx: &mut App, shared: &Shared) {
-    let handle = shared.borrow_mut().settings_window.take();
+    let mut state = shared.borrow_mut();
+    let handle = state.settings_window.take();
+    state.settings_view = None;
+    drop(state);
     if let Some(handle) = handle {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
     }
@@ -85,7 +92,7 @@ pub fn focus_settings(cx: &mut App, shared: &Shared) {
 /// Clears handles of windows the user closed, remembering the last size.
 pub fn reap_closed(cx: &mut App, shared: &Shared) {
     let mut state = shared.borrow_mut();
-    if let Some(handle) = &state.settings_window {
+    if let Some(handle) = state.settings_window {
         match handle.update(cx, |_, window, _| window.window_bounds()) {
             Ok(bounds) => {
                 if let WindowBounds::Windowed(bounds) = bounds {
@@ -94,6 +101,7 @@ pub fn reap_closed(cx: &mut App, shared: &Shared) {
             }
             Err(_) => {
                 state.settings_window = None;
+                state.settings_view = None;
             }
         }
     }
@@ -101,9 +109,9 @@ pub fn reap_closed(cx: &mut App, shared: &Shared) {
 
 /// Repaints the settings view so shared-state changes show up.
 pub fn notify_settings(cx: &mut App, shared: &Shared) {
-    let handle = shared.borrow().settings_window;
-    if let Some(handle) = handle {
-        let _ = handle.update(cx, |_, _, cx| cx.notify());
+    let view = shared.borrow().settings_view.clone();
+    if let Some(view) = view {
+        view.update(cx, |_, cx| cx.notify());
     }
 }
 

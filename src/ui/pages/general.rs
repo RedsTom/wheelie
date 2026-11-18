@@ -168,6 +168,7 @@ fn wheel_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
             .flex_col()
             .gap_2()
             .child(controls::section_title(
+                "overview-section-wheel",
                 t,
                 tr(language, TextKey::WheelPreviewTitle),
                 Some(tr(language, TextKey::WheelPreviewBody)),
