@@ -3,7 +3,28 @@ name: CI
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+      # Changes to this file itself must always run CI.
+      - "!.github/workflows/ci.yml"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+      - "!.github/workflows/ci.yml"
+  # Manual escape hatch: docs-only branches can still be tested on demand.
+  workflow_dispatch:
 
 permissions:
   contents: read
