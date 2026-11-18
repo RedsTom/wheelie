@@ -5,6 +5,12 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild against (defaults to the triggering release)
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -17,6 +23,7 @@ jobs:
     name: Version guard
     runs-on: ubuntu-latest
     outputs:
+      tag: ${{ steps.guard.outputs.tag }}
       version: ${{ steps.guard.outputs.version }}
     steps:
       - uses: actions/checkout@v5
@@ -24,7 +31,7 @@ jobs:
       - name: Validate tag against Cargo.toml
         id: guard
         run: |
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
           if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
             echo "::error::Release tag '$tag' is not vMAJOR.MINOR.PATCH[-prerelease]"
             exit 1
@@ -36,6 +43,7 @@ jobs:
             echo "::error::Tag base version $base does not match Cargo.toml version $cargo_version. Bump Cargo.toml before tagging."
             exit 1
           fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -72,9 +80,9 @@ jobs:
         shell: pwsh
         run: |
           choco install wixtoolset -y --limit-output | Out-Null
-          $wixBin = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
-          $env:PATH = "$wixBin;$env:PATH"
-          $env:WIX = $wixBin
+          # WIX points at the toolset root; cargo-wix appends \bin itself.
+          $env:WIX = "C:\Program Files (x86)\WiX Toolset v3.14"
+          $env:PATH = "$env:WIX\bin;$env:PATH"
           cargo install cargo-wix --locked
           cargo wix --no-build --target-bin-dir target\release `
             -o "dist\Wheelie-${{ needs.meta.outputs.version }}-win-x64.msi"
@@ -206,4 +214,4 @@ jobs:
             echo "::error::No build artifacts found"
             exit 1
           fi
-          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          gh release upload "${{ needs.meta.outputs.tag }}" "${files[@]}" --clobber
