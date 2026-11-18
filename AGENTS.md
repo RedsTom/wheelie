@@ -83,7 +83,7 @@ CD builds, per published release, and attaches these assets to the release:
 
 | Platform | Assets |
 |---|---|
-| Windows x64 | `Wheelie-<ver>-win-x64-setup.exe` (NSIS), `Wheelie-<ver>-win-x64.msi` (WiX via `cargo wix`), `Wheelie-<ver>-win-x64-portable.zip` |
+| Windows x64 | `Wheelie-<ver>-win-x64-setup.exe` (NSIS), `Wheelie-<ver>-win-x64-portable.zip` |
 | macOS universal | `Wheelie-<ver>-macos-universal.dmg`, `Wheelie-<ver>-macos-portable.zip` (arm64 + x86_64 fused with `lipo`, ad-hoc signed) |
 | Linux x64 | `wheelie_<ver>_amd64.deb`, `wheelie-<ver>-1.x86_64.rpm`, `Wheelie-<ver>-x86_64.AppImage`, `Wheelie-<ver>-linux-x64-portable.tar.gz` |
 
@@ -92,12 +92,12 @@ Rules:
 - The `meta` job fails the pipeline when the tag base version differs from
   `Cargo.toml`; prerelease suffixes (`-beta.1`) are allowed on the tag only.
 - Packaging inputs live in `packaging/` (NSIS script, `Info.plist`, desktop
-  entry, deb/rpm/AppImage scripts) and `wix/main.wxs`; keep them in sync with
-  renames and icon changes.
+  entry, deb/rpm/AppImage scripts); keep them in sync with renames and icon
+  changes.
 - Nothing is code-signed: expect SmartScreen on Windows and Gatekeeper on macOS
   for first launch; say so in the release notes.
 - Release checklist: bump `Cargo.toml` → merge the `dev` → `main` PR → push tag →
-  publish the release → watch the "Release" workflow until the nine assets are
+  publish the release → watch the "Release" workflow until the eight assets are
   attached.
 
 ## Locked decisions
@@ -201,4 +201,4 @@ Rules:
 - `README.md`: public overview.
 - `.github/workflows/ci.yml`: exact CI matrix and Linux dependencies.
 - `.github/workflows/release.yml`: CD — installers and portable archives per
-  published release; packaging inputs in `packaging/` and `wix/main.wxs`.
+  published release; packaging inputs in `packaging/`.

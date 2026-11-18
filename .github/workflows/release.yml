@@ -76,17 +76,6 @@ jobs:
             "/DOUTFILE=$ws\dist\Wheelie-$ver-win-x64-setup.exe" `
             packaging\windows\installer.nsi
 
-      - name: WiX MSI installer
-        shell: pwsh
-        run: |
-          choco install wixtoolset -y --limit-output | Out-Null
-          # WIX points at the toolset root; cargo-wix appends \bin itself.
-          $env:WIX = "C:\Program Files (x86)\WiX Toolset v3.14"
-          $env:PATH = "$env:WIX\bin;$env:PATH"
-          cargo install cargo-wix --locked
-          cargo wix --no-build --target-bin-dir target\release `
-            -o "dist\Wheelie-${{ needs.meta.outputs.version }}-win-x64.msi"
-
       - name: Portable zip
         run: |
           New-Item -ItemType Directory -Force dist\portable | Out-Null

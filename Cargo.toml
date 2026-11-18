@@ -8,10 +8,6 @@ authors = ["RedsTom"]
 repository = "https://github.com/RedsTom/wheelie"
 description = "Cross-platform knob utility with a Windows Wheel-inspired radial UI"
 
-[package.metadata.wix]
-# The GPL text ships as LICENSE.txt inside the package instead of an RTF EULA dialog.
-eula = false
-
 [dependencies]
 anyhow = "1"
 auto-launch = "0.6"
