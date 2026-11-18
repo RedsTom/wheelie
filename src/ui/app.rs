@@ -1,16 +1,27 @@
 //! eframe shell for Wheelie.
 //!
-//! This module owns the `eframe::App` implementation. Business state lives in
-//! `crate::app` and is observed through `RuntimeHandle`.
+//! The shell owns the OS adapters that need the window event loop: the global
+//! key watcher and the tray icon are created lazily on the first frame and
+//! polled from here. Knob gestures are detected on this thread and only the
+//! resulting actions are handed to the background worker.
 
-use crate::app::{AppEvent, RuntimeHandle, RuntimeSnapshot};
+use crate::app::action_worker::discard_injected;
+use crate::app::{AppCommand, AppEvent, RuntimeHandle, RuntimeSnapshot, RuntimeState};
 use crate::assets;
-use crate::core::{APP_ID, APP_NAME, PlatformInfo, TextKey, VERSION, tr};
-use crate::ui::settings::{self, SettingsTab, UiPreferences};
+use crate::core::{
+    APP_ID, APP_NAME, Config, Control, GestureConfig, GestureDetector, GestureEvent, InputEvent,
+    KeyChord, Language, PlatformInfo, TextKey, VERSION, tr,
+};
+use crate::platform::{
+    GlobalHotkeyService, HotkeySource, InjectionGuard, TrayCommand, TrayService,
+};
+use crate::ui::overlay::{self, OverlayOutcome, OverlayState};
+use crate::ui::settings::{self, PageContext, SettingsTab, UiPreferences};
 use crate::ui::{theme, widgets};
 use eframe::egui;
-use egui::{Margin, RichText, Stroke};
-use std::time::Duration;
+use egui::{Margin, RichText, Stroke, ViewportCommand, ViewportId};
+use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 /// Runs the native eframe loop.
 pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
@@ -34,6 +45,10 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn overlay_viewport_id() -> ViewportId {
+    ViewportId::from_hash_of("wheelie-wheel-overlay")
+}
+
 struct WheelieApp {
     runtime: RuntimeHandle,
     preferences: UiPreferences,
@@ -41,17 +56,44 @@ struct WheelieApp {
     snapshot: RuntimeSnapshot,
     platform: PlatformInfo,
     logo: egui::TextureHandle,
+    detector: GestureDetector,
+    gesture_config: GestureConfig,
+    injection: InjectionGuard,
+    hotkeys: Option<GlobalHotkeyService>,
+    hotkeys_failed: bool,
+    hotkeys_dirty: bool,
+    paused: bool,
+    testing: Option<Control>,
+    last_key: Option<KeyChord>,
+    overlay: OverlayState,
+    tray: Option<TrayService>,
+    tray_language: Language,
+    tray_failed: bool,
+    hidden: bool,
+    quitting: bool,
 }
 
 impl WheelieApp {
     fn new(cc: &eframe::CreationContext<'_>, runtime: RuntimeHandle) -> Self {
-        let preferences = UiPreferences::default();
+        let config = runtime.config();
+        let preferences = UiPreferences {
+            language: config.language,
+            theme_mode: config.general.theme,
+        };
         theme::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, preferences.theme_mode);
+
+        let gesture_config = config.general.gesture_config();
+        let bindings = config
+            .active_profile()
+            .map(|profile| profile.bindings)
+            .unwrap_or_else(|| Config::default().profiles[0].bindings);
 
         let snapshot = runtime.snapshot();
         let platform = runtime.platform_info();
         let logo = assets::load_logo_texture(&cc.egui_ctx);
+        let injection = runtime.injection_guard();
+
         Self {
             runtime,
             preferences,
@@ -59,6 +101,21 @@ impl WheelieApp {
             snapshot,
             platform,
             logo,
+            detector: GestureDetector::new(bindings, gesture_config),
+            gesture_config,
+            injection,
+            hotkeys: None,
+            hotkeys_failed: false,
+            hotkeys_dirty: true,
+            paused: false,
+            testing: None,
+            last_key: None,
+            overlay: OverlayState::default(),
+            tray: None,
+            tray_language: preferences.language,
+            tray_failed: false,
+            hidden: false,
+            quitting: false,
         }
     }
 
@@ -68,6 +125,294 @@ impl WheelieApp {
                 AppEvent::StateChanged(snapshot) => self.snapshot = snapshot,
                 AppEvent::Error(message) => self.snapshot.last_error = Some(message),
             }
+        }
+    }
+
+    /// Creates the OS services that need the window event loop.
+    fn ensure_services(&mut self) {
+        if self.hotkeys.is_none() && !self.hotkeys_failed {
+            match GlobalHotkeyService::new() {
+                Ok(service) => {
+                    info!("global key watcher ready");
+                    self.hotkeys = Some(service);
+                    self.hotkeys_dirty = true;
+                }
+                Err(error) => {
+                    warn!(%error, "global key watcher unavailable");
+                    self.hotkeys_failed = true;
+                    self.runtime.report_error(error.to_string());
+                }
+            }
+        }
+
+        if self.tray.is_none() && !self.tray_failed && self.runtime.config().general.show_tray {
+            let language = self.preferences.language;
+            let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                TrayService::new(language)
+            }));
+            match built {
+                Ok(Ok(tray)) => {
+                    self.tray = Some(tray);
+                    self.tray_language = language;
+                }
+                Ok(Err(error)) => {
+                    warn!(%error, "tray icon unavailable");
+                    self.tray_failed = true;
+                }
+                Err(_) => {
+                    warn!("tray icon unavailable on this system");
+                    self.tray_failed = true;
+                }
+            }
+        }
+    }
+
+    /// Keeps the gesture detector aligned with the active profile.
+    fn sync_from_config(&mut self) {
+        let config = self.runtime.config();
+
+        if let Some(profile) = config.active_profile()
+            && profile.bindings != self.detector.bindings()
+        {
+            self.detector.set_bindings(profile.bindings);
+            self.hotkeys_dirty = true;
+        }
+
+        let gesture_config = config.general.gesture_config();
+        if gesture_config != self.gesture_config {
+            let bindings = self.detector.bindings();
+            let overlay_open = self.overlay.open;
+            self.detector = GestureDetector::new(bindings, gesture_config);
+            self.detector.set_overlay_open(overlay_open);
+            self.gesture_config = gesture_config;
+        }
+
+        let paused = matches!(
+            self.snapshot.state,
+            RuntimeState::Paused | RuntimeState::Stopped
+        );
+        if paused != self.paused {
+            self.paused = paused;
+            self.hotkeys_dirty = true;
+        }
+
+        if self.tray_language != self.preferences.language
+            && let Some(tray) = self.tray.take()
+        {
+            drop(tray);
+            self.tray_failed = false;
+        }
+    }
+
+    fn apply_hotkeys_if_needed(&mut self) {
+        if !self.hotkeys_dirty {
+            return;
+        }
+        self.hotkeys_dirty = false;
+
+        let Some(service) = &mut self.hotkeys else {
+            return;
+        };
+
+        let result = if self.paused {
+            service.unregister_all()
+        } else if let Some(control) = self.testing {
+            service.apply(&[self.detector.bindings().chord_for(control)])
+        } else {
+            let bindings = self.detector.bindings();
+            service.apply(&[bindings.left, bindings.right, bindings.press])
+        };
+
+        match result {
+            Ok(()) => self
+                .runtime
+                .set_capture_active(!self.paused && self.testing.is_none()),
+            Err(error) => {
+                self.runtime.set_capture_active(false);
+                self.runtime.report_error(error.to_string());
+            }
+        }
+    }
+
+    fn poll_hotkeys(&mut self) {
+        let events = match &mut self.hotkeys {
+            Some(service) => service.poll(),
+            None => Vec::new(),
+        };
+        let events = discard_injected(events, &self.injection);
+
+        if events.is_empty() {
+            return;
+        }
+
+        if let Some(_control) = self.testing {
+            for event in &events {
+                if let InputEvent::Pressed(chord) = event {
+                    self.last_key = Some(*chord);
+                }
+            }
+            return;
+        }
+
+        if self.paused {
+            return;
+        }
+
+        let now = Instant::now();
+        for event in events {
+            for gesture in self.detector.feed(event, now) {
+                self.handle_gesture(gesture);
+            }
+        }
+    }
+
+    fn tick_detector(&mut self, ctx: &egui::Context) {
+        let now = Instant::now();
+        for gesture in self.detector.tick(now) {
+            self.handle_gesture(gesture);
+        }
+
+        if let Some(expiry) = self.detector.pending_expiry() {
+            let remaining = expiry.saturating_duration_since(now);
+            ctx.request_repaint_after(remaining.max(Duration::from_millis(5)));
+        }
+    }
+
+    fn handle_gesture(&mut self, gesture: GestureEvent) {
+        match gesture {
+            GestureEvent::DoublePress => self.open_overlay(),
+            GestureEvent::RotateLeft => {
+                if self.overlay.open {
+                    self.overlay.select_previous();
+                } else {
+                    self.execute(Control::Left);
+                }
+            }
+            GestureEvent::RotateRight => {
+                if self.overlay.open {
+                    self.overlay.select_next();
+                } else {
+                    self.execute(Control::Right);
+                }
+            }
+            GestureEvent::SinglePress => {
+                if self.overlay.open {
+                    self.confirm_overlay();
+                } else {
+                    self.execute(Control::Press);
+                }
+            }
+        }
+    }
+
+    fn open_overlay(&mut self) {
+        if self.overlay.open {
+            return;
+        }
+        self.overlay.open = true;
+        self.overlay.selection = Control::Press;
+        self.overlay.hovered = None;
+        self.overlay.outcome = None;
+        self.detector.set_overlay_open(true);
+    }
+
+    fn close_overlay(&mut self) {
+        if !self.overlay.open {
+            return;
+        }
+        self.overlay.open = false;
+        self.overlay.outcome = None;
+        self.detector.set_overlay_open(false);
+    }
+
+    fn confirm_overlay(&mut self) {
+        let control = self.overlay.selection;
+        self.close_overlay();
+        self.execute(control);
+    }
+
+    fn execute(&mut self, control: Control) {
+        let config = self.runtime.config();
+        let Some(profile) = config.active_profile() else {
+            return;
+        };
+        let action = profile.actions.for_control(control).clone();
+        if let Err(error) = self.runtime.execute(action) {
+            self.runtime.report_error(error.to_string());
+        }
+    }
+
+    fn persist_preferences(&mut self) {
+        let config = self.runtime.config();
+        if config.language == self.preferences.language
+            && config.general.theme == self.preferences.theme_mode
+        {
+            return;
+        }
+
+        let language = self.preferences.language;
+        let theme_mode = self.preferences.theme_mode;
+        if let Err(error) = self.runtime.update_config(|config| {
+            config.language = language;
+            config.general.theme = theme_mode;
+        }) {
+            self.runtime.report_error(error.to_string());
+        }
+    }
+
+    fn handle_close_request(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|input| input.viewport().close_requested()) {
+            return;
+        }
+        if self.quitting || !self.runtime.config().general.show_tray {
+            self.quitting = true;
+            return;
+        }
+        ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+        ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+        self.hidden = true;
+    }
+
+    fn poll_tray(&mut self, ctx: &egui::Context) {
+        let commands = self
+            .tray
+            .as_ref()
+            .map(TrayService::poll)
+            .unwrap_or_default();
+
+        for command in commands {
+            match command {
+                TrayCommand::Show => {
+                    self.hidden = false;
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(ViewportCommand::Focus);
+                }
+                TrayCommand::Hide => {
+                    self.hidden = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+                }
+                TrayCommand::Pause => {
+                    self.testing = None;
+                    let _ = self.runtime.send(AppCommand::Pause);
+                }
+                TrayCommand::Resume => {
+                    let _ = self.runtime.send(AppCommand::Resume);
+                }
+                TrayCommand::Quit => {
+                    self.quitting = true;
+                    let _ = self.runtime.send(AppCommand::Quit);
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
+    }
+
+    fn profile_name(&self) -> String {
+        let config = self.runtime.config();
+        let language = self.preferences.language;
+        match config.active_profile() {
+            Some(profile) => profile.name.clone(),
+            None => tr(language, TextKey::NoProfileLabel).to_owned(),
         }
     }
 
@@ -102,11 +447,7 @@ impl WheelieApp {
 
         ui.add_space((ui.available_height() - 118.0).max(12.0));
 
-        let profile = self
-            .snapshot
-            .active_profile
-            .as_deref()
-            .unwrap_or_else(|| tr(language, TextKey::NoProfileLabel));
+        let profile = self.profile_name();
         let (state, state_color) = settings::state_label(language, self.snapshot.state);
 
         egui::Frame::NONE
@@ -141,16 +482,8 @@ impl WheelieApp {
                 .color(theme::muted(ui)),
         );
     }
-}
 
-impl eframe::App for WheelieApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.drain_events();
-        theme::apply(ctx, self.preferences.theme_mode);
-        // The runtime is polled through a channel; a low-frequency repaint keeps
-        // the UI in sync until the event-loop integration lands in M3.
-        ctx.request_repaint_after(Duration::from_millis(100));
-
+    fn settings_panels(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("sidebar")
             .resizable(false)
             .exact_width(212.0)
@@ -160,6 +493,9 @@ impl eframe::App for WheelieApp {
                     .inner_margin(Margin::symmetric(16, 18)),
             )
             .show(ctx, |ui| self.sidebar(ui));
+
+        let mut test_request = None;
+        let mut bindings_changed = false;
 
         egui::CentralPanel::default()
             .frame(
@@ -171,16 +507,91 @@ impl eframe::App for WheelieApp {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        let mut context = PageContext {
+                            runtime: &self.runtime,
+                            language: self.preferences.language,
+                            platform: self.platform,
+                            logo: &self.logo,
+                            last_key: self.last_key,
+                            testing: self.testing,
+                            test_request: None,
+                            bindings_changed: false,
+                        };
                         settings::page(
                             ui,
                             &mut self.preferences,
                             self.tab,
-                            &self.runtime,
+                            &mut context,
                             &self.snapshot,
-                            self.platform,
-                            &self.logo,
                         );
+                        test_request = context.test_request;
+                        bindings_changed = context.bindings_changed;
                     });
             });
+
+        if let Some(request) = test_request {
+            self.testing = request;
+            self.last_key = None;
+            self.hotkeys_dirty = true;
+        }
+        if bindings_changed {
+            self.hotkeys_dirty = true;
+        }
+    }
+
+    fn show_overlay(&mut self, ctx: &egui::Context) {
+        if !self.overlay.open {
+            return;
+        }
+
+        let actions = self
+            .runtime
+            .config()
+            .active_profile()
+            .map(|profile| profile.actions.clone())
+            .unwrap_or_default();
+        let language = self.preferences.language;
+        let id = overlay_viewport_id();
+
+        ctx.show_viewport_immediate(id, overlay::viewport_builder(), |overlay_ctx, _class| {
+            overlay::draw(overlay_ctx, language, &actions, &mut self.overlay);
+        });
+
+        match self.overlay.outcome.take() {
+            Some(OverlayOutcome::Close) => self.close_overlay(),
+            Some(OverlayOutcome::Confirm(control)) => {
+                self.close_overlay();
+                self.execute(control);
+            }
+            None => {}
+        }
+
+        if !self.overlay.open {
+            ctx.send_viewport_cmd_to(id, ViewportCommand::Close);
+        }
+    }
+}
+
+impl eframe::App for WheelieApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.drain_events();
+        theme::apply(ctx, self.preferences.theme_mode);
+        self.persist_preferences();
+        self.ensure_services();
+        self.sync_from_config();
+        self.handle_close_request(ctx);
+        self.poll_tray(ctx);
+
+        if !self.quitting {
+            self.apply_hotkeys_if_needed();
+            self.poll_hotkeys();
+            self.tick_detector(ctx);
+        }
+
+        self.settings_panels(ctx);
+        self.show_overlay(ctx);
+
+        // Keep polling while the window is hidden so knob input still works.
+        ctx.request_repaint_after(Duration::from_millis(35));
     }
 }

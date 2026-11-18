@@ -194,6 +194,58 @@ pub fn timeline_item(ui: &mut egui::Ui, index: usize, title: &str, body: &str, a
     });
 }
 
+/// Key and modifier picker. Returns true when the chord changed.
+pub fn chord_picker(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    language: crate::core::Language,
+    chord: &mut crate::core::KeyChord,
+) -> bool {
+    use crate::core::{KeyCode, TextKey, tr};
+
+    let mut changed = false;
+
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt(id_salt)
+            .selected_text(chord.key.as_str())
+            .width(92.0)
+            .show_ui(ui, |ui| {
+                for key in KeyCode::ALL {
+                    if ui
+                        .selectable_value(&mut chord.key, *key, key.as_str())
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                }
+            });
+
+        changed |= ui
+            .checkbox(
+                &mut chord.modifiers.control,
+                tr(language, TextKey::ModifierControl),
+            )
+            .changed();
+        changed |= ui
+            .checkbox(&mut chord.modifiers.alt, tr(language, TextKey::ModifierAlt))
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut chord.modifiers.shift,
+                tr(language, TextKey::ModifierShift),
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut chord.modifiers.meta,
+                tr(language, TextKey::ModifierMeta),
+            )
+            .changed();
+    });
+
+    changed
+}
+
 /// Label/description row with a control aligned to the right.
 pub fn setting_row(
     ui: &mut egui::Ui,

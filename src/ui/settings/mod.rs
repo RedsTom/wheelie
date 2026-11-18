@@ -1,17 +1,20 @@
 //! Settings view: navigation, preferences and page dispatch.
 
 mod about;
+mod actions;
+mod devices;
 mod general;
+mod macros;
 
 use crate::app::{RuntimeHandle, RuntimeSnapshot, RuntimeState};
-use crate::core::{Language, PlatformInfo, TextKey, tr};
+use crate::core::{CaptureMode, Config, Control, KeyChord, Language, PlatformInfo, TextKey, tr};
 use crate::ui::{ThemeMode, theme, widgets};
 use eframe::egui;
 
 /// Settings sections shown in the left navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsTab {
-    /// General runtime status and application options.
+    /// Application status and options.
     #[default]
     General,
     /// Knob device and key bindings.
@@ -64,6 +67,26 @@ impl Default for UiPreferences {
     }
 }
 
+/// Services and transient state pages need from the application shell.
+pub struct PageContext<'a> {
+    /// Runtime handle used to read and persist the configuration.
+    pub runtime: &'a RuntimeHandle,
+    /// Active interface language.
+    pub language: Language,
+    /// Static platform capabilities.
+    pub platform: PlatformInfo,
+    /// Brand texture used by empty states.
+    pub logo: &'a egui::TextureHandle,
+    /// Last chord received while the live key check is active.
+    pub last_key: Option<KeyChord>,
+    /// Control currently being checked, if any.
+    pub testing: Option<Control>,
+    /// Page request: start checking a control, or stop with `Some(None)`.
+    pub test_request: Option<Option<Control>>,
+    /// Set when key bindings changed and the shell must watch new keys.
+    pub bindings_changed: bool,
+}
+
 /// Draws the large sidebar navigation items.
 pub fn navigation(ui: &mut egui::Ui, language: Language, selected: &mut SettingsTab) {
     for tab in SettingsTab::ALL {
@@ -88,62 +111,40 @@ pub fn page(
     ui: &mut egui::Ui,
     preferences: &mut UiPreferences,
     tab: SettingsTab,
-    runtime: &RuntimeHandle,
+    context: &mut PageContext<'_>,
     snapshot: &RuntimeSnapshot,
-    platform: PlatformInfo,
-    logo: &egui::TextureHandle,
 ) {
     match tab {
-        SettingsTab::General => general::show(ui, preferences, runtime, snapshot, logo),
-        SettingsTab::Devices => placeholder(
-            ui,
-            preferences.language,
-            TextKey::TabDevices,
-            TextKey::DevicesSubtitle,
-            TextKey::EmptyDevicesTitle,
-            TextKey::EmptyDevicesBody,
-            logo,
-        ),
-        SettingsTab::Actions => placeholder(
-            ui,
-            preferences.language,
-            TextKey::TabActions,
-            TextKey::ActionsSubtitle,
-            TextKey::EmptyActionsTitle,
-            TextKey::EmptyActionsBody,
-            logo,
-        ),
-        SettingsTab::Macros => placeholder(
-            ui,
-            preferences.language,
-            TextKey::TabMacros,
-            TextKey::MacrosSubtitle,
-            TextKey::EmptyMacrosTitle,
-            TextKey::EmptyMacrosBody,
-            logo,
-        ),
-        SettingsTab::About => about::show(ui, preferences.language, platform, logo),
+        SettingsTab::General => general::show(ui, preferences, context, snapshot),
+        SettingsTab::Devices => devices::show(ui, context),
+        SettingsTab::Actions => actions::show(ui, context),
+        SettingsTab::Macros => macros::show(ui, context),
+        SettingsTab::About => about::show(ui, context),
     }
 }
 
-fn placeholder(
-    ui: &mut egui::Ui,
-    language: Language,
-    title: TextKey,
-    subtitle: TextKey,
-    empty_title: TextKey,
-    empty_body: TextKey,
-    logo: &egui::TextureHandle,
-) {
-    widgets::page_header(ui, tr(language, title), tr(language, subtitle));
-    widgets::card(ui, |ui| {
-        widgets::empty_state(
-            ui,
-            tr(language, empty_title),
-            tr(language, empty_body),
-            tr(language, TextKey::ComingSoonBadge),
-            theme::ACCENT,
-            logo,
-        );
-    });
+/// Index of the active profile in the configuration, when it exists.
+pub fn active_profile_index(config: &Config) -> Option<usize> {
+    let id = config.active_profile.as_deref()?;
+    config.profiles.iter().position(|profile| profile.id == id)
+}
+
+/// Small inline warning used by pages that validate user input.
+pub fn warning(ui: &mut egui::Ui, text: &str) {
+    ui.colored_label(theme::WARNING, text);
+}
+
+/// Platform permission or limitation notice relevant to knob keys.
+pub fn platform_notice(ui: &mut egui::Ui, language: Language, platform: PlatformInfo) {
+    let key = match platform.capture {
+        CaptureMode::PermissionedHotkeys => Some(TextKey::MacPermissionNotice),
+        CaptureMode::X11BestEffort => Some(TextKey::LinuxCaptureNotice),
+        CaptureMode::ExclusiveHotkeys => Some(TextKey::WindowsElevatedNotice),
+        CaptureMode::Unsupported => None,
+    };
+
+    if let Some(key) = key {
+        warning(ui, tr(language, key));
+        ui.add_space(10.0);
+    }
 }

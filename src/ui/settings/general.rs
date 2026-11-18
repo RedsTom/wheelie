@@ -1,17 +1,16 @@
 //! General settings page.
 
-use crate::app::{AppCommand, RuntimeHandle, RuntimeSnapshot, RuntimeState};
+use crate::app::{AppCommand, RuntimeSnapshot, RuntimeState};
 use crate::core::{Language, TextKey, tr};
-use crate::ui::settings::{UiPreferences, state_label};
+use crate::ui::settings::{PageContext, UiPreferences, state_label};
 use crate::ui::{ThemeMode, theme, widgets};
 use eframe::egui;
 
 pub fn show(
     ui: &mut egui::Ui,
     preferences: &mut UiPreferences,
-    runtime: &RuntimeHandle,
+    context: &mut PageContext<'_>,
     snapshot: &RuntimeSnapshot,
-    logo: &egui::TextureHandle,
 ) {
     let language = preferences.language;
     widgets::page_header(
@@ -20,10 +19,10 @@ pub fn show(
         tr(language, TextKey::GeneralSubtitle),
     );
 
-    runtime_card(ui, language, runtime, snapshot, logo);
+    runtime_card(ui, language, context, snapshot);
     ui.add_space(14.0);
     ui.columns(2, |columns| {
-        preferences_card(&mut columns[0], preferences);
+        preferences_card(&mut columns[0], preferences, context);
         getting_started_card(&mut columns[1], language);
     });
 }
@@ -31,13 +30,13 @@ pub fn show(
 fn runtime_card(
     ui: &mut egui::Ui,
     language: Language,
-    runtime: &RuntimeHandle,
+    context: &PageContext<'_>,
     snapshot: &RuntimeSnapshot,
-    logo: &egui::TextureHandle,
 ) {
+    let runtime = context.runtime;
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::logo_image(ui, logo, 44.0);
+            widgets::logo_image(ui, context.logo, 44.0);
             ui.add_space(4.0);
             ui.vertical(|ui| {
                 let title = match snapshot.state {
@@ -95,7 +94,7 @@ fn runtime_card(
     });
 }
 
-fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
+fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences, context: &PageContext<'_>) {
     let language = preferences.language;
     widgets::card(ui, |ui| {
         widgets::section_title(
@@ -146,6 +145,36 @@ fn preferences_card(ui: &mut egui::Ui, preferences: &mut UiPreferences) {
                             );
                         }
                     });
+            },
+        );
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        let config = context.runtime.config();
+        let mut start_at_login = context
+            .runtime
+            .start_at_login_enabled()
+            .unwrap_or(config.general.start_at_login);
+
+        widgets::setting_row(
+            ui,
+            tr(language, TextKey::StartAtLoginLabel),
+            tr(language, TextKey::StartAtLoginDescription),
+            |ui| {
+                if ui.checkbox(&mut start_at_login, "").changed() {
+                    match context.runtime.set_start_at_login(start_at_login) {
+                        Ok(()) => {
+                            if let Err(error) = context.runtime.update_config(|config| {
+                                config.general.start_at_login = start_at_login;
+                            }) {
+                                context.runtime.report_error(error.to_string());
+                            }
+                        }
+                        Err(error) => context.runtime.report_error(error.to_string()),
+                    }
+                }
             },
         );
     });

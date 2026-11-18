@@ -15,6 +15,7 @@ pub mod key_map;
 #[cfg(test)]
 pub mod mock;
 pub mod paths;
+pub mod tray;
 
 pub use crate::core::PlatformInfo;
 pub use autostart::AutoStartService;
@@ -26,3 +27,4 @@ pub use input::{EnigoInputSink, InputSink};
 pub use instance::InstanceGuard;
 pub use key_map::{to_enigo_key, to_enigo_modifiers, to_global_code, to_global_modifiers};
 pub use paths::{config_dir, data_dir, log_dir};
+pub use tray::{TrayCommand, TrayService};

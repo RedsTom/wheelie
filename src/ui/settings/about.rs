@@ -1,15 +1,12 @@
 //! About page.
 
-use crate::core::{APP_NAME, Language, PlatformInfo, TextKey, VERSION, tr};
+use crate::core::{APP_NAME, Language, TextKey, VERSION, tr};
+use crate::ui::settings::{PageContext, platform_notice};
 use crate::ui::{theme, widgets};
 use eframe::egui;
 
-pub fn show(
-    ui: &mut egui::Ui,
-    language: Language,
-    platform: PlatformInfo,
-    logo: &egui::TextureHandle,
-) {
+pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
+    let language = context.language;
     widgets::page_header(
         ui,
         tr(language, TextKey::AboutTitle),
@@ -18,7 +15,7 @@ pub fn show(
 
     widgets::card(ui, |ui| {
         ui.horizontal(|ui| {
-            widgets::logo_image(ui, logo, 56.0);
+            widgets::logo_image(ui, context.logo, 56.0);
             ui.add_space(6.0);
             ui.vertical(|ui| {
                 ui.label(
@@ -50,6 +47,12 @@ pub fn show(
 
         info_row(ui, language, TextKey::VersionLabel, VERSION);
         info_row(ui, language, TextKey::LicenseLabel, "GPL-3.0-only");
+        info_row(
+            ui,
+            language,
+            TextKey::SettingsFileLabel,
+            &context.runtime.config_path().display().to_string(),
+        );
     });
 
     ui.add_space(14.0);
@@ -57,16 +60,11 @@ pub fn show(
         widgets::section_title(ui, tr(language, TextKey::PlatformCardTitle), None);
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            widgets::status_pill(ui, platform.os, theme::ACCENT);
+            widgets::status_pill(ui, context.platform.os, theme::ACCENT);
         });
 
-        if platform.capture_is_limited {
-            ui.add_space(8.0);
-            ui.colored_label(
-                theme::WARNING,
-                tr(language, TextKey::PlatformLimitedWarning),
-            );
-        }
+        ui.add_space(8.0);
+        platform_notice(ui, language, context.platform);
     });
 }
 

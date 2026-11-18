@@ -77,6 +77,15 @@ impl Bindings {
             None
         }
     }
+
+    /// Returns the chord bound to a control.
+    pub fn chord_for(&self, control: Control) -> KeyChord {
+        match control {
+            Control::Left => self.left,
+            Control::Right => self.right,
+            Control::Press => self.press,
+        }
+    }
 }
 
 /// Error returned when bindings are ambiguous.
@@ -450,6 +459,14 @@ mod tests {
             too_slow.validate(),
             Err(GestureConfigError::InvalidDebounce(501))
         );
+    }
+
+    #[test]
+    fn bindings_return_the_chord_of_each_control() {
+        let bindings = bindings();
+        assert_eq!(bindings.chord_for(Control::Left), bindings.left);
+        assert_eq!(bindings.chord_for(Control::Right), bindings.right);
+        assert_eq!(bindings.chord_for(Control::Press), bindings.press);
     }
 
     #[test]
