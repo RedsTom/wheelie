@@ -1275,6 +1275,7 @@ fn icon_text_button(
 ) -> impl IntoElement {
     div()
         .id(id)
+        .flex_none()
         .flex()
         .items_center()
         .gap_2()

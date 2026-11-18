@@ -76,8 +76,6 @@ pub struct ShellState {
     pub settings_bounds: Option<Bounds<Pixels>>,
     /// Open radial overlay window.
     pub overlay_window: Option<WindowHandle<OverlayView>>,
-    /// Settings window was closed to show the overlay; restore after.
-    pub settings_hidden_for_overlay: bool,
 }
 
 /// Shared handle type.
@@ -125,7 +123,6 @@ impl ShellState {
             settings_window: None,
             settings_bounds: None,
             overlay_window: None,
-            settings_hidden_for_overlay: false,
         }
     }
 }

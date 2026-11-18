@@ -3,14 +3,14 @@
 //! The overlay is a 380×380 undecorated `PopUp` centered on the primary
 //! display with `WindowBackgroundAppearance::Transparent`. Input updates
 //! [`OverlayState`] through the shared shell state; the 35 ms tick calls
-//! [`sync`] to process outcomes, watch focus and open/close the window,
-//! hiding the settings window while the wheel is up (old morph behavior).
+//! [`sync`] to process outcomes, watch focus and open/close the window.
+//! The wheel is always its own window; the settings window stays open.
 
 use crate::core::APP_ID;
 use crate::ui::gestures;
 use crate::ui::overlay::{OVERLAY_SIZE, OverlayOutcome};
 use crate::ui::shell::Shared;
-use crate::ui::{wheel_paint, window as shell_window};
+use crate::ui::wheel_paint;
 use gpui::prelude::*;
 use gpui::{
     App, Context, FocusHandle, KeyDownEvent, MouseButton, Render, TitlebarOptions, Window,
@@ -103,31 +103,17 @@ pub(crate) fn sync(cx: &mut App, shared: &Shared) {
         None => {}
     }
 
-    // Window lifecycle: open with the state, close with it; hide the
-    // settings window while the wheel is up and bring it back afterwards.
-    let (open, has_window, restore_settings) = {
+    // Window lifecycle: the wheel is always its own window; the settings
+    // window stays open behind it.
+    let (should_open, has_window) = {
         let state = shared.borrow();
-        (
-            state.overlay.open,
-            state.overlay_window.is_some(),
-            state.settings_hidden_for_overlay,
-        )
+        (state.overlay.open, state.overlay_window.is_some())
     };
-    if open && !has_window {
-        open_window_and_hide_settings(shared, cx);
-    } else if !open && has_window {
+    if should_open && !has_window {
+        open(shared, cx);
+    } else if !should_open && has_window {
         close(shared, cx);
-        if restore_settings {
-            shell_window::focus_settings(cx, shared);
-            shared.borrow_mut().settings_hidden_for_overlay = false;
-        }
     }
-}
-
-fn open_window_and_hide_settings(shared: &Shared, cx: &mut App) {
-    shell_window::close_settings(cx, shared);
-    shared.borrow_mut().settings_hidden_for_overlay = true;
-    open(shared, cx);
 }
 
 /// Root view of the wheel window.
@@ -170,8 +156,19 @@ impl Render for OverlayView {
             .child(
                 canvas(
                     |_, _, _| (),
-                    move |_bounds, _, window, _| {
-                        wheel_paint::paint(window, &geometry, center, &sets, selected, hovered);
+                    move |bounds, _, window, _| {
+                        let paint_center = point(
+                            bounds.origin.x + px(OVERLAY_SIZE / 2.0),
+                            bounds.origin.y + px(OVERLAY_SIZE / 2.0),
+                        );
+                        wheel_paint::paint(
+                            window,
+                            &geometry,
+                            paint_center,
+                            &sets,
+                            selected,
+                            hovered,
+                        );
                     },
                 )
                 .absolute()

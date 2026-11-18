@@ -1126,6 +1126,7 @@ fn icon_text_button(
 ) -> impl IntoElement {
     div()
         .id(id)
+        .flex_none()
         .flex()
         .items_center()
         .gap_1()
@@ -1462,11 +1463,15 @@ fn preview_box(
         .child(
             canvas(
                 |_, _, _| (),
-                move |_bounds, _, window, _| {
+                move |bounds, _, window, _| {
+                    let paint_center = point(
+                        bounds.origin.x + px(BOX / 2.0),
+                        bounds.origin.y + px(BOX / 2.0),
+                    );
                     wheel_paint::paint(
                         window,
                         &geometry,
-                        center,
+                        paint_center,
                         &paint_sets,
                         selected_index,
                         hovered,
