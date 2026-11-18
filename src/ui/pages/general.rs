@@ -22,7 +22,7 @@ pub(crate) fn render(
     div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(8.0))
         .child(controls::page_header(
             t,
             tr(language, TextKey::TabGeneral),
@@ -52,11 +52,12 @@ fn runtime_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoE
     let runtime = state.runtime.clone();
 
     controls::card(
+        "overview-status",
         t,
         div()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_2()
             .child(
                 div()
                     .flex()
@@ -160,6 +161,7 @@ fn wheel_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
     let title_y = BOX - 8.0;
 
     controls::card(
+        "overview-wheel",
         t,
         div()
             .flex()

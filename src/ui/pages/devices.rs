@@ -26,7 +26,7 @@ pub(crate) fn render(
     let mut page = div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(8.0))
         .child(controls::page_header(
             t,
             tr(language, TextKey::TabDevices),
@@ -57,11 +57,12 @@ fn bindings_card(
     let invalid = bindings.validate().is_err();
 
     controls::card(
+        "device-bindings",
         t,
         div()
             .flex()
             .flex_col()
-            .gap(px(10.0))
+            .gap(px(8.0))
             .child(
                 div()
                     .text_size(px(12.5))

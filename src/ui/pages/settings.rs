@@ -36,7 +36,7 @@ pub(crate) fn render(
     div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(8.0))
         .child(controls::page_header(
             t,
             tr(language, TextKey::TabSettings),
@@ -88,6 +88,7 @@ fn preferences_card(
     let login_runtime = state.runtime.clone();
 
     controls::card(
+        "settings-preferences",
         t,
         div()
             .flex()
@@ -98,7 +99,7 @@ fn preferences_card(
                 Some(tr(language, TextKey::PreferencesBody)),
             ))
             .child(
-                div().mt(px(10.0)).child(controls::setting_row(
+                div().mt(px(8.0)).child(controls::setting_row(
                     t,
                     tr(language, TextKey::ThemeLabel),
                     tr(language, TextKey::ThemeDescription),
@@ -135,7 +136,7 @@ fn preferences_card(
                         }),
                 )),
             )
-            .child(div().my(px(8.0)).child(separator(t)))
+            .child(div().my(px(6.0)).child(separator(t)))
             .child(controls::setting_row(
                 t,
                 tr(language, TextKey::LanguageLabel),
@@ -172,7 +173,7 @@ fn preferences_card(
                         ))
                     }),
             ))
-            .child(div().my(px(8.0)).child(separator(t)))
+            .child(div().my(px(6.0)).child(separator(t)))
             .child(controls::setting_row(
                 t,
                 tr(language, TextKey::StartAtLoginLabel),
@@ -196,6 +197,7 @@ fn preferences_card(
 
 fn about_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoElement {
     controls::card(
+        "settings-about",
         t,
         div()
             .flex()
@@ -255,11 +257,12 @@ fn about_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
 
 fn platform_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoElement {
     controls::card(
+        "settings-platform",
         t,
         div()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap_2()
             .child(controls::section_title(
                 t,
                 tr(language, TextKey::PlatformCardTitle),
@@ -280,6 +283,7 @@ fn platform_card(state: &ShellState, t: Tokens, language: Language) -> impl Into
 
 fn open_source_card(t: Tokens, language: Language) -> impl IntoElement {
     controls::card(
+        "settings-open-source",
         t,
         div()
             .flex()

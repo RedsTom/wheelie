@@ -32,7 +32,7 @@ pub(crate) fn render(
     div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(8.0))
         .child(controls::page_header(
             t,
             tr(language, TextKey::TabMacros),
@@ -41,8 +41,8 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
-                .when(wide, |node| node.flex_row().items_start().gap(px(20.0)))
-                .when(!wide, |node| node.flex_col().gap(px(14.0)))
+                .when(wide, |node| node.flex_row().items_start().gap(px(16.0)))
+                .when(!wide, |node| node.flex_col().gap(px(10.0)))
                 .child(
                     div()
                         .when(wide, |node| node.w(px(280.0)).flex_none())
@@ -118,7 +118,7 @@ fn macro_column(
         .w_full()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .child(controls::icon_text_button(
             "new-macro",
             t,
@@ -172,6 +172,7 @@ fn editor_column(
 ) -> AnyElement {
     let Some(index) = selected else {
         return controls::card(
+            "macros-empty",
             t,
             controls::empty_state(
                 t,
@@ -234,6 +235,7 @@ fn editor_column(
     .into_any_element();
 
     controls::card(
+        "macro-editor",
         t,
         editor(
             state, shared, window, t, language, config, definition, delete, cx,
@@ -322,7 +324,7 @@ fn editor(
     div()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .child(
             div().flex().flex_col().gap_2().child(
                 div()

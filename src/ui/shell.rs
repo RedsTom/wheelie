@@ -328,7 +328,7 @@ impl Render for SettingsView {
                     .overflow_scroll()
                     .bg(t.bg)
                     .px(px(28.0))
-                    .py(px(22.0))
+                    .py(px(16.0))
                     .child(pages::render(&state, &self.shared, window, cx)),
             )
             .child(listener)

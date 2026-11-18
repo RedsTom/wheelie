@@ -203,8 +203,12 @@ pub fn field_input(
 }
 
 /// Card container used by settings pages, backed by gpui-kit `GroupBox`.
-pub fn card(_t: Tokens, content: impl IntoElement) -> impl IntoElement {
-    GroupBox::new().outline().p(px(14.0)).child(content)
+///
+/// `id` must be unique among the cards of a page. `GroupBox` falls back to
+/// `"group-box"` when no id is set, which makes sibling cards share one
+/// accessibility node id and panics gpui once accessibility is activated.
+pub fn card(id: &'static str, _t: Tokens, content: impl IntoElement) -> impl IntoElement {
+    GroupBox::new().id(id).outline().p(px(12.0)).child(content)
 }
 
 /// Compact page title and muted subtitle.
@@ -212,7 +216,7 @@ pub fn page_header(t: Tokens, title: &str, subtitle: &str) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
-        .mb(px(14.0))
+        .mb(px(10.0))
         .child(
             div()
                 .text_size(px(24.0))

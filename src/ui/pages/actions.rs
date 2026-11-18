@@ -41,7 +41,7 @@ pub(crate) fn render(
     div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(8.0))
         .child(controls::page_header(
             t,
             tr(language, TextKey::TabActions),
@@ -50,8 +50,8 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
-                .when(wide, |node| node.flex_row().items_start().gap(px(20.0)))
-                .when(!wide, |node| node.flex_col().gap(px(14.0)))
+                .when(wide, |node| node.flex_row().items_start().gap(px(16.0)))
+                .when(!wide, |node| node.flex_col().gap(px(10.0)))
                 .child(
                     div()
                         .when(wide, |node| node.flex_1().min_w(px(380.0)).max_w(px(640.0)))
@@ -149,7 +149,7 @@ fn set_column(
         .w_full()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .child(div().w_full().flex().justify_center().child(preview))
         .child(
             div()
@@ -247,6 +247,7 @@ fn editor_column(
 ) -> AnyElement {
     if sets.is_empty() {
         return controls::card(
+            "set-editor-empty",
             t,
             div()
                 .font_weight(gpui::FontWeight::SEMIBOLD)
@@ -322,8 +323,9 @@ fn editor_column(
     div()
         .flex()
         .flex_col()
-        .gap(px(14.0))
+        .gap(px(10.0))
         .child(controls::card(
+            "set-editor",
             t,
             editor(
                 state, shared, window, t, language, config, set, is_active, brightness, delete, cx,
@@ -424,7 +426,7 @@ fn editor(
     div()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .child(
             div()
                 .flex()
@@ -557,11 +559,11 @@ fn show_control(
         )
         .child(
             div()
-                .mt(px(4.0))
+                .mt(px(2.0))
                 .flex()
                 .flex_wrap()
                 .items_center()
-                .gap_3()
+                .gap_2()
                 .children(parameters(
                     state, shared, window, t, language, config, set, control, ids, cx,
                 )),
