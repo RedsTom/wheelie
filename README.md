@@ -29,12 +29,12 @@ Wheelie is not affiliated with Microsoft.
   mouse clicks, media keys and app launching. Brightness is only offered when the
   input backend supports it.
 - Macro editor with key, text, delay, mouse click and scroll steps.
-- Tray icon with show/hide, pause/resume and quit; closing settings keeps Wheelie
-  running in the tray.
+- Tray icon with only the relevant show/hide and pause/resume actions, plus quit;
+  closing settings keeps Wheelie running in the tray.
 - Optional start at login.
 - French and English user interface, dark and light themes.
-- First-launch introduction that explains the wheel and sets the language and
-  knob keys.
+- First-launch setup that picks the language, assigns the knob keys and explains
+  the wheel.
 - Windows, macOS and Linux X11. Wayland is best-effort and clearly warned about.
 
 ## Platform support
@@ -78,9 +78,9 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 
 ## Using Wheelie
 
-On a fresh install, a short introduction opens first: it explains the wheel,
-lets you choose the interface language and assign the three knob keys. It appears
-only once; later launches go straight to the settings.
+On a fresh install, a short setup opens first: it asks for the interface
+language, assigns the three knob keys, then explains how to use the wheel. It
+appears only once; later launches go straight to the settings.
 
 1. Open **Devices** and pick the keys your keyboard software sends for knob left,
    knob right and knob press. The three keys must be different; the live check
@@ -97,9 +97,10 @@ only once; later launches go straight to the settings.
    rotation and a single press run the actions of the active set; a single press
    waits for the double-click window (350 ms by default).
 
-Closing the settings window hides Wheelie to the tray. Use the tray menu to show
-the window again, pause or resume knob detection, or quit. Only one Wheelie
-instance runs at a time.
+Closing the settings window hides Wheelie to the tray. The tray menu shows only
+the action that applies: **Hide** while the window is open, **Show** while it is
+closed, and **Pause** or **Resume** depending on the current state. **Quit** is
+always available. Only one Wheelie instance runs at a time.
 
 ## Development
 

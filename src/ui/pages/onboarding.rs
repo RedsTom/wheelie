@@ -1,21 +1,21 @@
-//! First-launch introduction shown instead of the settings pages.
+//! First-launch setup shown instead of the settings pages.
 //!
-//! Four short pages explain the knob workflow, choose the interface language,
-//! assign the three keys and confirm the result. The pages reuse the settings
-//! widgets and the shared key-capture listener, so no second window is needed.
+//! Three short pages pick the interface language, assign the three knob keys
+//! and explain how the wheel is used. The pages reuse the settings widgets and
+//! the shared key-capture listener, so no second window is needed.
 
-use super::{devices, info_row, separator};
+use super::{devices, separator};
 use crate::core::{Language, TextKey, tr};
 use crate::ui::controls;
 use crate::ui::settings::active_profile_index;
 use crate::ui::shell::{OnboardingStep, SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Window, div, img, px};
+use gpui::{AnyElement, Context, Rgba, Window, div, img, px};
 
 const LANGUAGE_MENU: &str = "onboarding-language";
 
-/// Renders the current introduction page.
+/// Renders the current setup page.
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
@@ -27,10 +27,9 @@ pub(crate) fn render(
     let step = state.onboarding.step;
 
     let content = match step {
-        OnboardingStep::Welcome => welcome(t, language),
         OnboardingStep::Language => language_page(t, language, shared),
         OnboardingStep::Keys => keys_page(state, shared, t, language),
-        OnboardingStep::Done => done_page(state, t, language),
+        OnboardingStep::Usage => usage_page(t, language),
     };
 
     div()
@@ -44,19 +43,10 @@ pub(crate) fn render(
 }
 
 fn header(t: Tokens, language: Language, step: OnboardingStep) -> AnyElement {
-    let progress = format!("{} / {}", step.number(), OnboardingStep::ALL.len());
-    let title = match step {
-        OnboardingStep::Welcome => tr(language, TextKey::GettingStartedTitle),
-        OnboardingStep::Language => tr(language, TextKey::OnboardingLanguageTitle),
-        OnboardingStep::Keys => tr(language, TextKey::OnboardingKeysTitle),
-        OnboardingStep::Done => tr(language, TextKey::OnboardingDoneTitle),
-    };
-
     div()
         .flex()
-        .items_center()
-        .justify_between()
-        .gap_4()
+        .flex_col()
+        .gap(px(10.0))
         .child(
             div()
                 .flex()
@@ -83,66 +73,67 @@ fn header(t: Tokens, language: Language, step: OnboardingStep) -> AnyElement {
                         ),
                 ),
         )
-        .child(
+        .child(stepper(t, language, step))
+        .into_any_element()
+}
+
+fn stepper(t: Tokens, language: Language, current: OnboardingStep) -> AnyElement {
+    let steps = [
+        (
+            OnboardingStep::Language,
+            tr(language, TextKey::OnboardingLanguageTitle),
+        ),
+        (
+            OnboardingStep::Keys,
+            tr(language, TextKey::OnboardingKeysTitle),
+        ),
+        (
+            OnboardingStep::Usage,
+            tr(language, TextKey::OnboardingUsageTitle),
+        ),
+    ];
+    let current_index = OnboardingStep::ALL
+        .iter()
+        .position(|candidate| *candidate == current)
+        .unwrap_or(0);
+
+    let mut row = div().flex().items_center().gap_2();
+    for (index, (step, label)) in steps.iter().enumerate() {
+        let reached = *step == current || index < current_index;
+        let accent = if reached { style::ACCENT } else { t.border };
+        let text = if reached { t.text } else { t.muted };
+
+        row = row.child(
             div()
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(controls::inline_pill(&progress, style::ACCENT))
                 .child(
                     div()
-                        .text_size(px(13.0))
-                        .text_color(t.muted)
-                        .child(title.to_owned()),
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size(px(24.0))
+                        .rounded_full()
+                        .bg(Rgba { a: 0.16, ..accent })
+                        .text_size(px(11.5))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(accent)
+                        .child((index + 1).to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(text)
+                        .child(label.to_string()),
                 ),
-        )
-        .into_any_element()
-}
+        );
 
-fn welcome(t: Tokens, language: Language) -> AnyElement {
-    controls::card(
-        "onboarding-welcome",
-        t,
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(10.0))
-            .child(controls::section_title(
-                "onboarding-welcome-title",
-                t,
-                tr(language, TextKey::GettingStartedTitle),
-                Some(tr(language, TextKey::GettingStartedSubtitle)),
-            ))
-            .child(separator(t))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(controls::timeline_item(
-                        t,
-                        1,
-                        tr(language, TextKey::StepConfigureTitle),
-                        tr(language, TextKey::StepConfigureBody),
-                        true,
-                    ))
-                    .child(controls::timeline_item(
-                        t,
-                        2,
-                        tr(language, TextKey::StepAssignTitle),
-                        tr(language, TextKey::StepAssignBody),
-                        false,
-                    ))
-                    .child(controls::timeline_item(
-                        t,
-                        3,
-                        tr(language, TextKey::StepOpenTitle),
-                        tr(language, TextKey::StepOpenBody),
-                        false,
-                    )),
-            ),
-    )
-    .into_any_element()
+        if index + 1 < steps.len() {
+            row = row.child(div().h(px(1.0)).w(px(20.0)).bg(t.border));
+        }
+    }
+    row.into_any_element()
 }
 
 fn language_page(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
@@ -209,14 +200,7 @@ fn language_page(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
                             },
                         ))
                     }),
-            ))
-            .child(separator(t))
-            .child(
-                div()
-                    .text_size(px(13.0))
-                    .text_color(t.muted)
-                    .child(tr(language, TextKey::GettingStartedSubtitle).to_owned()),
-            ),
+            )),
     )
     .into_any_element()
 }
@@ -247,43 +231,47 @@ fn keys_page(state: &ShellState, shared: &Shared, t: Tokens, language: Language)
     .into_any_element()
 }
 
-fn done_page(state: &ShellState, t: Tokens, language: Language) -> AnyElement {
-    let config = state.runtime.config();
-    let mut body = div()
+fn usage_page(t: Tokens, language: Language) -> AnyElement {
+    let body = div()
         .flex()
         .flex_col()
-        .gap(px(8.0))
+        .gap(px(10.0))
         .child(controls::section_title(
-            "onboarding-done-title",
+            "onboarding-usage-title",
             t,
-            tr(language, TextKey::OnboardingDoneTitle),
+            tr(language, TextKey::OnboardingUsageTitle),
             None,
         ))
+        .child(controls::timeline_item(
+            t,
+            1,
+            tr(language, TextKey::OnboardingUsageDoubleTitle),
+            tr(language, TextKey::OnboardingUsageDoubleBody),
+            false,
+        ))
+        .child(controls::timeline_item(
+            t,
+            2,
+            tr(language, TextKey::OnboardingUsageChooseTitle),
+            tr(language, TextKey::OnboardingUsageChooseBody),
+            false,
+        ))
+        .child(controls::timeline_item(
+            t,
+            3,
+            tr(language, TextKey::OnboardingUsageRunTitle),
+            tr(language, TextKey::OnboardingUsageRunBody),
+            false,
+        ))
+        .child(separator(t))
         .child(
             div()
                 .text_size(px(13.0))
                 .text_color(t.muted)
-                .child(tr(language, TextKey::OnboardingDoneBody)),
-        )
-        .child(separator(t))
-        .child(info_row(
-            t,
-            tr(language, TextKey::LanguageLabel),
-            language.native_name(),
-        ));
+                .child(tr(language, TextKey::OnboardingUsageInvite)),
+        );
 
-    if let Some(index) = active_profile_index(&config) {
-        let bindings = config.profiles[index].bindings;
-        let left = bindings.left.to_string();
-        let right = bindings.right.to_string();
-        let press = bindings.press.to_string();
-        body = body
-            .child(info_row(t, tr(language, TextKey::ControlLeft), &left))
-            .child(info_row(t, tr(language, TextKey::ControlRight), &right))
-            .child(info_row(t, tr(language, TextKey::ControlPress), &press));
-    }
-
-    controls::card("onboarding-done", t, body).into_any_element()
+    controls::card("onboarding-usage", t, body).into_any_element()
 }
 
 fn footer(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
@@ -292,7 +280,7 @@ fn footer(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
     let next_shared = shared.clone();
     let finish_shared = shared.clone();
 
-    let back = if step == OnboardingStep::Welcome {
+    let back = if step == OnboardingStep::Language {
         div().into_any_element()
     } else {
         controls::secondary_button(t, tr(language, TextKey::OnboardingBack), move |_, _, _| {
@@ -301,7 +289,7 @@ fn footer(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
         .into_any_element()
     };
 
-    let forward: AnyElement = if step == OnboardingStep::Done {
+    let forward: AnyElement = if step == OnboardingStep::Usage {
         controls::primary_button(tr(language, TextKey::OnboardingFinish), move |_, _, _| {
             finish(&finish_shared)
         })
@@ -375,33 +363,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn first_page_picks_the_language() {
+        assert_eq!(OnboardingStep::default(), OnboardingStep::Language);
+        assert_eq!(OnboardingStep::ALL.len(), 3);
+    }
+
+    #[test]
     fn steps_advance_and_stop_at_the_end() {
-        assert_eq!(next_step(OnboardingStep::Welcome), OnboardingStep::Language);
         assert_eq!(next_step(OnboardingStep::Language), OnboardingStep::Keys);
-        assert_eq!(next_step(OnboardingStep::Keys), OnboardingStep::Done);
-        assert_eq!(next_step(OnboardingStep::Done), OnboardingStep::Done);
+        assert_eq!(next_step(OnboardingStep::Keys), OnboardingStep::Usage);
+        assert_eq!(next_step(OnboardingStep::Usage), OnboardingStep::Usage);
     }
 
     #[test]
     fn steps_go_back_and_stop_at_the_start() {
-        assert_eq!(previous_step(OnboardingStep::Done), OnboardingStep::Keys);
+        assert_eq!(previous_step(OnboardingStep::Usage), OnboardingStep::Keys);
         assert_eq!(
             previous_step(OnboardingStep::Keys),
             OnboardingStep::Language
         );
         assert_eq!(
             previous_step(OnboardingStep::Language),
-            OnboardingStep::Welcome
-        );
-        assert_eq!(
-            previous_step(OnboardingStep::Welcome),
-            OnboardingStep::Welcome
+            OnboardingStep::Language
         );
     }
 
     #[test]
     fn step_numbers_are_one_based() {
-        assert_eq!(OnboardingStep::Welcome.number(), 1);
-        assert_eq!(OnboardingStep::Done.number(), OnboardingStep::ALL.len());
+        assert_eq!(OnboardingStep::Language.number(), 1);
+        assert_eq!(OnboardingStep::Usage.number(), OnboardingStep::ALL.len());
     }
 }

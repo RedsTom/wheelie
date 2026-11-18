@@ -60,11 +60,11 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Knob key picker with live test button.
 - [x] Radial overlay centered on the primary screen.
 - [x] Knob and mouse navigation in the overlay.
-- [x] Tray icon and menu.
+- [x] Tray icon and menu with only the relevant show/hide and pause/resume actions.
 - [x] Hide settings to tray and reopen from tray.
 - [x] Theme selection.
-- [x] First-launch introduction explaining the wheel and setting the language
-  and knob keys.
+- [x] First-launch setup that sets the language and knob keys, then explains the
+  wheel.
 
 ## M4 — OS hardening
 

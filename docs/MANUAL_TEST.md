@@ -13,16 +13,18 @@ each target platform before a release.
 
 ## First launch
 
-- [ ] Start Wheelie with no configuration file: the introduction opens on the
-      welcome page instead of the settings.
+- [ ] Start Wheelie with no configuration file: the setup opens on the language
+      page instead of the settings, with a three-step indicator at the top.
 - [ ] Choose English: the remaining pages, the tray menu and the settings use
       English immediately.
-- [ ] Assign the three knob keys from the introduction; a duplicate key shows
-      the warning and is refused.
-- [ ] Finish the introduction, restart Wheelie: the settings open directly and
-      the language and keys are kept.
-- [ ] Start with an existing configuration file that predates the introduction:
-      the settings open directly.
+- [ ] Assign the three knob keys from the setup; a duplicate key shows the
+      warning and is refused.
+- [ ] The last page explains the double click, choosing a set and running actions;
+      the button invites you to try the knob now.
+- [ ] Finish the setup, restart Wheelie: the settings open directly and the
+      language and keys are kept.
+- [ ] Start with an existing configuration file that predates the setup: the
+      settings open directly.
 
 ## Key assignment
 
@@ -81,10 +83,14 @@ each target platform before a release.
 
 ## Tray and window
 
+- [ ] With the settings open, the tray menu offers **Hide**, one pause action
+      and **Quit**: no **Show** entry and no paired pause action.
 - [ ] Close the settings window: it disappears and the tray icon remains (on
-      Linux, note whether a tray icon is available; if not, check the log).
-- [ ] Tray **Show**: the window returns with focus.
-- [ ] Tray **Pause**: knob input stops running actions. **Resume** restores it.
+      Linux, note whether a tray icon is available; if not, check the log). The
+      menu now offers **Show** instead of **Hide**.
+- [ ] Tray **Show**: the window returns with focus and the menu switches back.
+- [ ] Tray **Pause**: knob input stops running actions. The menu now offers
+      **Resume** only; **Resume** restores it.
 - [ ] Tray **Quit**: Wheelie exits completely.
 - [ ] Start Wheelie twice: the second process exits immediately.
 

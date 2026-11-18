@@ -31,25 +31,23 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tracing::info;
 
-/// Page of the first-launch introduction.
+/// Page of the first-launch setup.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum OnboardingStep {
-    /// What Wheelie does and how the knob is used.
-    #[default]
-    Welcome,
     /// Interface language choice.
+    #[default]
     Language,
     /// Keys sent by the keyboard software for the three knob controls.
     Keys,
-    /// Short summary before entering the settings.
-    Done,
+    /// How the wheel and the active set are used.
+    Usage,
 }
 
 impl OnboardingStep {
     /// Every page in display order.
-    pub const ALL: [Self; 4] = [Self::Welcome, Self::Language, Self::Keys, Self::Done];
+    pub const ALL: [Self; 3] = [Self::Language, Self::Keys, Self::Usage];
 
-    /// One-based position used in the progress indicator.
+    /// One-based position of the page in the setup flow.
     pub fn number(self) -> usize {
         Self::ALL.iter().position(|step| *step == self).unwrap_or(0) + 1
     }

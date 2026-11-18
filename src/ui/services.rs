@@ -70,6 +70,14 @@ pub fn ensure_services(state: &mut ShellState) {
         drop(tray);
         state.tray_failed = false;
     }
+
+    if let Some(tray) = &mut state.tray {
+        let language = state.preferences.language;
+        let window_visible = state.settings_window.is_some();
+        if let Err(error) = tray.set_state(language, window_visible, state.paused) {
+            warn!(%error, "tray menu update failed");
+        }
+    }
 }
 
 /// Keeps the gesture detector aligned with the active profile.
