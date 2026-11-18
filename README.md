@@ -25,9 +25,9 @@ Wheelie is not affiliated with Microsoft.
 - Action sets: volume, brightness (where the system accepts it), vertical and
   horizontal scroll by default, and as many more as you like, each with a name,
   a Phosphor icon and three actions.
-- Actions: volume, brightness (macOS), scroll, macros, keyboard shortcuts, mouse
-  clicks, media keys and app launching. Brightness is only offered when the input
-  backend supports it.
+- Actions: volume, mute, brightness (macOS), scroll, macros, keyboard shortcuts,
+  mouse clicks, media keys and app launching. Brightness is only offered when the
+  input backend supports it.
 - Macro editor with key, text, delay, mouse click and scroll steps.
 - Tray icon with show/hide, pause/resume and quit; closing settings keeps Wheelie
   running in the tray.
@@ -84,9 +84,10 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
    mouse clicks.
 4. Press the knob twice to open the wheel. Rotate to move between sets, press to
-   make one active, or click its sector. `Esc` closes the wheel. Outside the
-   wheel, rotation and a single press run the actions of the active set; a single
-   press waits for the double-click window (350 ms by default).
+   make one active, or click its sector. The wheel closes with `Esc`, a click
+   outside it, or as soon as another window takes focus. Outside the wheel,
+   rotation and a single press run the actions of the active set; a single press
+   waits for the double-click window (350 ms by default).
 
 Closing the settings window hides Wheelie to the tray. Use the tray menu to show
 the window again, pause or resume knob detection, or quit. Only one Wheelie

@@ -31,6 +31,9 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
             .with_inner_size([1180.0, 760.0])
             .with_min_inner_size([960.0, 620.0])
             .with_app_id(APP_ID)
+            // wgpu picks its surface alpha mode from the root window; without
+            // this the wheel viewport is composited onto an opaque black.
+            .with_transparent(true)
             .with_icon(assets::window_icon())
             .with_title(APP_NAME),
         ..Default::default()
@@ -574,11 +577,10 @@ impl WheelieApp {
         }
 
         let sets = self.runtime.config().action_sets;
-        let language = self.preferences.language;
         let id = overlay_viewport_id();
 
         ctx.show_viewport_immediate(id, overlay::viewport_builder(), |overlay_ctx, _class| {
-            overlay::draw(overlay_ctx, language, &sets, &mut self.overlay);
+            overlay::draw(overlay_ctx, &sets, &mut self.overlay);
         });
 
         match self.overlay.outcome.take() {

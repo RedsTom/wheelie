@@ -31,6 +31,9 @@ pub trait InputSink: Send {
     /// Changes the screen brightness by OS steps.
     fn brightness(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError>;
 
+    /// Toggles the system mute state.
+    fn volume_mute(&mut self) -> Result<(), PlatformError>;
+
     /// Sends a media transport command.
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError>;
 
@@ -145,6 +148,11 @@ impl InputSink for EnigoInputSink {
                 "screen brightness is not available on this platform",
             ))
         }
+    }
+
+    fn volume_mute(&mut self) -> Result<(), PlatformError> {
+        self.enigo.key(Key::VolumeMute, Direction::Click)?;
+        Ok(())
     }
 
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError> {

@@ -111,6 +111,7 @@ where
         Action::Volume { direction, steps } => sink
             .volume(*direction, *steps)
             .map_err(|error| error.to_string()),
+        Action::Mute => sink.volume_mute().map_err(|error| error.to_string()),
         Action::Brightness { direction, steps } => sink
             .brightness(*direction, *steps)
             .map_err(|error| error.to_string()),

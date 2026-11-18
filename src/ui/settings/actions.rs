@@ -228,6 +228,7 @@ fn new_set(sets: &[ActionSet], language: Language) -> ActionSet {
 enum Kind {
     None,
     Volume,
+    Mute,
     Brightness,
     Scroll,
     Macro,
@@ -238,9 +239,10 @@ enum Kind {
 }
 
 impl Kind {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::None,
         Self::Volume,
+        Self::Mute,
         Self::Brightness,
         Self::Scroll,
         Self::Macro,
@@ -264,6 +266,7 @@ impl Kind {
         match action {
             Action::None => Self::None,
             Action::Volume { .. } => Self::Volume,
+            Action::Mute => Self::Mute,
             Action::Brightness { .. } => Self::Brightness,
             Action::Scroll { .. } => Self::Scroll,
             Action::Macro { .. } => Self::Macro,
@@ -278,6 +281,7 @@ impl Kind {
         match self {
             Self::None => tr(language, TextKey::ActionNone),
             Self::Volume => tr(language, TextKey::ActionKindVolume),
+            Self::Mute => tr(language, TextKey::ActionKindMute),
             Self::Brightness => tr(language, TextKey::ActionKindBrightness),
             Self::Scroll => tr(language, TextKey::ActionKindScroll),
             Self::Macro => tr(language, TextKey::ActionKindMacro),
@@ -291,6 +295,7 @@ impl Kind {
     fn default_action(self, config: &Config) -> Action {
         match self {
             Self::None => Action::None,
+            Self::Mute => Action::Mute,
             Self::Volume => Action::Volume {
                 direction: VolumeDirection::Up,
                 steps: 1,
@@ -384,6 +389,13 @@ fn parameters(
         Action::None => {
             ui.label(
                 egui::RichText::new(tr(language, TextKey::ActionNone))
+                    .size(12.5)
+                    .color(theme::muted(ui)),
+            );
+        }
+        Action::Mute => {
+            ui.label(
+                egui::RichText::new(tr(language, TextKey::ActionMute))
                     .size(12.5)
                     .color(theme::muted(ui)),
             );

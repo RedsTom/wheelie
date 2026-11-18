@@ -47,15 +47,15 @@ impl WheelGeometry {
 
     /// Start and end angles of a sector, in radians.
     ///
-    /// Sectors start at the top of the wheel and run clockwise; screen
-    /// coordinates grow downward, so angle zero points right.
+    /// The first sector is centered on the top of the wheel and sectors run
+    /// clockwise; screen coordinates grow downward, so angle zero points right.
     pub fn sector_angles(&self, index: usize, count: usize) -> Option<(f32, f32)> {
         if count == 0 || index >= count {
             return None;
         }
         let step = std::f32::consts::TAU / count as f32;
         let top = -std::f32::consts::FRAC_PI_2;
-        let start = top + step * index as f32;
+        let start = top - step / 2.0 + step * index as f32;
         Some((start, start + step))
     }
 
@@ -73,7 +73,8 @@ impl WheelGeometry {
         let dy = y - self.center_y;
         let angle = dy.atan2(dx);
         let top = -std::f32::consts::FRAC_PI_2;
-        let mut relative = angle - top;
+        let step = std::f32::consts::TAU / count as f32;
+        let mut relative = angle - top + step / 2.0;
         while relative < 0.0 {
             relative += std::f32::consts::TAU;
         }
@@ -81,7 +82,6 @@ impl WheelGeometry {
             relative -= std::f32::consts::TAU;
         }
 
-        let step = std::f32::consts::TAU / count as f32;
         let index = (relative / step).floor() as usize;
         Some(index.min(count - 1))
     }
@@ -112,13 +112,13 @@ mod tests {
     #[test]
     fn sectors_split_the_ring_evenly() {
         let geometry = geometry();
-        // Top of the wheel is the start of the first sector.
+        // The first sector is centered on the top of the wheel.
         assert_eq!(geometry.sector_at(3, 100.0, 30.0), Some(0));
-        // The lower half is the second sector of three.
+        // Right-bottom and bottom-left are the next sectors.
         assert_eq!(geometry.sector_at(3, 160.0, 140.0), Some(1));
-        assert_eq!(geometry.sector_at(3, 40.0, 140.0), Some(1));
-        // Upper-left belongs to the last sector.
-        assert_eq!(geometry.sector_at(3, 40.0, 60.0), Some(2));
+        assert_eq!(geometry.sector_at(3, 40.0, 140.0), Some(2));
+        // Upper-left is still part of the top sector.
+        assert_eq!(geometry.sector_at(3, 40.0, 60.0), Some(0));
     }
 
     #[test]
@@ -141,7 +141,8 @@ mod tests {
     fn sector_angles_are_contiguous() {
         let geometry = geometry();
         let (start, end) = geometry.sector_angles(0, 4).expect("sector");
-        assert!((start + std::f32::consts::FRAC_PI_2).abs() < f32::EPSILON);
+        let quarter = std::f32::consts::FRAC_PI_2 / 2.0;
+        assert!((start + std::f32::consts::FRAC_PI_2 + quarter).abs() < f32::EPSILON);
         let (next_start, _) = geometry.sector_angles(1, 4).expect("sector");
         assert!((end - next_start).abs() < f32::EPSILON);
         assert_eq!(geometry.sector_angles(4, 4), None);

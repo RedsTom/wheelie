@@ -142,6 +142,23 @@ impl Config {
         }
     }
 
+    /// Removes the untouched default brightness set and repairs the active set.
+    ///
+    /// Called when the platform input backend cannot change the brightness, so
+    /// a document written by another platform does not keep a dead set.
+    pub fn remove_default_brightness_set(&mut self) {
+        use crate::core::action_set::is_default_brightness_set;
+
+        self.action_sets
+            .retain(|set| !is_default_brightness_set(set));
+
+        if let Some(active) = self.active_set.as_deref()
+            && !self.action_sets.iter().any(|set| set.id == active)
+        {
+            self.active_set = self.action_sets.first().map(|set| set.id.clone());
+        }
+    }
+
     /// Names of all macros, used to validate action references.
     pub fn macro_names(&self) -> HashSet<String> {
         self.macros
@@ -593,6 +610,42 @@ mod tests {
         assert_eq!(
             profile.matches_chord(KeyChord::new(KeyCode::F13)),
             Some(Control::Left)
+        );
+    }
+
+    #[test]
+    fn untouched_brightness_set_is_removed_without_backend_support() {
+        let mut config = Config {
+            active_set: Some(BRIGHTNESS_SET_ID.to_owned()),
+            ..Default::default()
+        };
+
+        config.remove_default_brightness_set();
+
+        assert!(
+            config
+                .action_sets
+                .iter()
+                .all(|set| set.id != BRIGHTNESS_SET_ID)
+        );
+        assert_eq!(
+            config.active_set.as_deref(),
+            Some(crate::core::action_set::VOLUME_SET_ID)
+        );
+    }
+
+    #[test]
+    fn customized_brightness_set_is_kept() {
+        let mut config = Config::default();
+        config.action_sets[1].actions.press = Action::Mute;
+
+        config.remove_default_brightness_set();
+
+        assert!(
+            config
+                .action_sets
+                .iter()
+                .any(|set| set.id == BRIGHTNESS_SET_ID)
         );
     }
 

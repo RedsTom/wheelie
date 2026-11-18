@@ -202,8 +202,14 @@ impl Runtime {
         let snapshot = Arc::new(RwLock::new(RuntimeSnapshot::default()));
 
         let platform = crate::platform::info();
-        let LoadedConfig { config, warning } =
-            store.load_with_default(Config::default_with(platform.brightness_supported));
+        let LoadedConfig {
+            mut config,
+            warning,
+        } = store.load_with_default(Config::default_with(platform.brightness_supported));
+
+        if !platform.brightness_supported {
+            config.remove_default_brightness_set();
+        }
         if let Some(warning) = &warning {
             warn!(%warning, "configuration was not usable");
             let mut current = write_snapshot(&snapshot);

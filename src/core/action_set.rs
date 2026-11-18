@@ -39,11 +39,83 @@ pub enum SetIcon {
     Folder,
     /// Rocket.
     App,
+    /// Film strip.
+    Video,
+    /// Web browser.
+    Browser,
+    /// Envelope.
+    Mail,
+    /// Calculator.
+    Calculator,
+    /// Terminal window.
+    Terminal,
+    /// Picture.
+    Photo,
+    /// Game controller.
+    Game,
+    /// House.
+    Home,
+    /// Padlock.
+    Lock,
+    /// Wi-Fi signal.
+    Wifi,
+    /// Bluetooth mark.
+    Bluetooth,
+    /// Battery.
+    Battery,
+    /// Clock face.
+    Clock,
+    /// Calendar.
+    Calendar,
+    /// Bell.
+    Bell,
+    /// Bookmark.
+    Bookmark,
+    /// Push pin.
+    Pin,
+    /// Code brackets.
+    Code,
+    /// Database cylinders.
+    Database,
+    /// Cloud.
+    Cloud,
+    /// Download arrow.
+    Download,
+    /// Upload arrow.
+    Upload,
+    /// Desktop monitor.
+    Monitor,
+    /// Laptop.
+    Laptop,
+    /// Phone.
+    Phone,
+    /// Headphones.
+    Headphones,
+    /// Microphone.
+    Microphone,
+    /// Paint palette.
+    Palette,
+    /// Pencil.
+    Pencil,
+    /// Compass.
+    Compass,
+    /// Flag.
+    Flag,
+    /// Gift.
+    Gift,
+    /// Lightning bolt.
+    Lightning,
+    /// Flame.
+    Fire,
+    /// Leaf.
+    Leaf,
+    /// Crescent moon.
+    Moon,
 }
 
 impl SetIcon {
     /// Every icon, in display order for the picker.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: &'static [Self] = &[
         Self::Volume,
         Self::Brightness,
         Self::Scroll,
@@ -57,6 +129,42 @@ impl SetIcon {
         Self::Search,
         Self::Folder,
         Self::App,
+        Self::Video,
+        Self::Browser,
+        Self::Mail,
+        Self::Calculator,
+        Self::Terminal,
+        Self::Photo,
+        Self::Game,
+        Self::Home,
+        Self::Lock,
+        Self::Wifi,
+        Self::Bluetooth,
+        Self::Battery,
+        Self::Clock,
+        Self::Calendar,
+        Self::Bell,
+        Self::Bookmark,
+        Self::Pin,
+        Self::Code,
+        Self::Database,
+        Self::Cloud,
+        Self::Download,
+        Self::Upload,
+        Self::Monitor,
+        Self::Laptop,
+        Self::Phone,
+        Self::Headphones,
+        Self::Microphone,
+        Self::Palette,
+        Self::Pencil,
+        Self::Compass,
+        Self::Flag,
+        Self::Gift,
+        Self::Lightning,
+        Self::Fire,
+        Self::Leaf,
+        Self::Moon,
     ];
 }
 
@@ -154,6 +262,27 @@ pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<Actio
     sets
 }
 
+/// True when `set` is the untouched brightness set created by default.
+///
+/// Used to drop that set on platforms whose input backend cannot change the
+/// brightness, without touching a set the user customized.
+pub fn is_default_brightness_set(set: &ActionSet) -> bool {
+    use crate::core::action::{Action, VolumeDirection};
+
+    set.id == BRIGHTNESS_SET_ID
+        && set.actions.left
+            == (Action::Brightness {
+                direction: VolumeDirection::Down,
+                steps: 1,
+            })
+        && set.actions.right
+            == (Action::Brightness {
+                direction: VolumeDirection::Up,
+                steps: 1,
+            })
+        && set.actions.press == Action::None
+}
+
 /// Horizontal scroll set, also used when upgrading older documents.
 pub fn horizontal_scroll_set(language: Language) -> ActionSet {
     use crate::core::action::{Action, ScrollAxis};
@@ -211,9 +340,9 @@ mod tests {
         }
 
         for icon in SetIcon::ALL {
-            let document = toml::to_string(&Wrapper { icon }).expect("serialize");
+            let document = toml::to_string(&Wrapper { icon: *icon }).expect("serialize");
             let parsed: Wrapper = toml::from_str(&document).expect("deserialize");
-            assert_eq!(parsed.icon, icon);
+            assert_eq!(parsed.icon, *icon);
         }
     }
 }

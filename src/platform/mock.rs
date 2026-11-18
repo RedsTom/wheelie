@@ -91,6 +91,10 @@ impl InputSink for MockInputSink {
         self.record(format!("brightness {direction:?} {steps}"))
     }
 
+    fn volume_mute(&mut self) -> Result<(), PlatformError> {
+        self.record("mute".to_owned())
+    }
+
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError> {
         self.record(format!("media {command:?}"))
     }

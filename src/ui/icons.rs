@@ -25,6 +25,42 @@ pub fn glyph(icon: SetIcon) -> &'static str {
         SetIcon::Search => ph::MAGNIFYING_GLASS,
         SetIcon::Folder => ph::FOLDER,
         SetIcon::App => ph::ROCKET_LAUNCH,
+        SetIcon::Video => ph::FILM_STRIP,
+        SetIcon::Browser => ph::BROWSER,
+        SetIcon::Mail => ph::ENVELOPE,
+        SetIcon::Calculator => ph::CALCULATOR,
+        SetIcon::Terminal => ph::TERMINAL_WINDOW,
+        SetIcon::Photo => ph::IMAGE,
+        SetIcon::Game => ph::GAME_CONTROLLER,
+        SetIcon::Home => ph::HOUSE,
+        SetIcon::Lock => ph::LOCK,
+        SetIcon::Wifi => ph::WIFI_HIGH,
+        SetIcon::Bluetooth => ph::BLUETOOTH,
+        SetIcon::Battery => ph::BATTERY_FULL,
+        SetIcon::Clock => ph::CLOCK,
+        SetIcon::Calendar => ph::CALENDAR,
+        SetIcon::Bell => ph::BELL,
+        SetIcon::Bookmark => ph::BOOKMARK_SIMPLE,
+        SetIcon::Pin => ph::PUSH_PIN,
+        SetIcon::Code => ph::CODE,
+        SetIcon::Database => ph::DATABASE,
+        SetIcon::Cloud => ph::CLOUD,
+        SetIcon::Download => ph::DOWNLOAD_SIMPLE,
+        SetIcon::Upload => ph::UPLOAD_SIMPLE,
+        SetIcon::Monitor => ph::MONITOR,
+        SetIcon::Laptop => ph::LAPTOP,
+        SetIcon::Phone => ph::DEVICE_MOBILE,
+        SetIcon::Headphones => ph::HEADPHONES,
+        SetIcon::Microphone => ph::MICROPHONE,
+        SetIcon::Palette => ph::PALETTE,
+        SetIcon::Pencil => ph::PENCIL_SIMPLE,
+        SetIcon::Compass => ph::COMPASS,
+        SetIcon::Flag => ph::FLAG,
+        SetIcon::Gift => ph::GIFT,
+        SetIcon::Lightning => ph::LIGHTNING,
+        SetIcon::Fire => ph::FIRE,
+        SetIcon::Leaf => ph::LEAF,
+        SetIcon::Moon => ph::MOON,
     }
 }
 
@@ -44,7 +80,7 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: SetIcon, color: egui::Co
 pub fn picker(ui: &mut egui::Ui, selected: &mut SetIcon) -> bool {
     let mut changed = false;
 
-    for row in SetIcon::ALL.chunks(7) {
+    for row in SetIcon::ALL.chunks(10) {
         ui.horizontal(|ui| {
             for icon in row {
                 let (rect, response) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::click());

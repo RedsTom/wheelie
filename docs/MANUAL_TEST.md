@@ -57,6 +57,8 @@ each target platform before a release.
 - [ ] Press: the selected set becomes active and the wheel closes. No action runs.
 - [ ] Reopen and click a sector with the mouse: that set becomes active.
 - [ ] Reopen and press `Esc`: the wheel closes without changing the active set.
+- [ ] Reopen and focus another window: the wheel closes by itself.
+- [ ] Assign the mute action to a control and check that sound toggles.
 - [ ] With a set active, rotate outside the wheel: the set's left/right actions run.
 - [ ] Single-press the knob without a second press: the press action of the
       active set runs after the double-click window, not before.

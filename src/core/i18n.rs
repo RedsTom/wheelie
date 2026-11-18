@@ -197,7 +197,9 @@ pub enum TextKey {
     SettingsFileLabel,
     ActionBrightnessUp,
     ActionBrightnessDown,
+    ActionMute,
     ActionKindBrightness,
+    ActionKindMute,
     SetVolume,
     SetBrightness,
     SetScroll,
@@ -209,6 +211,7 @@ pub enum TextKey {
     SetIconLabel,
     SetDefaultName,
     NoSetLabel,
+    EmptyStepsLabel,
 }
 
 impl TextKey {
@@ -353,7 +356,9 @@ impl TextKey {
         Self::SettingsFileLabel,
         Self::ActionBrightnessUp,
         Self::ActionBrightnessDown,
+        Self::ActionMute,
         Self::ActionKindBrightness,
+        Self::ActionKindMute,
         Self::SetVolume,
         Self::SetBrightness,
         Self::SetScroll,
@@ -365,6 +370,7 @@ impl TextKey {
         Self::SetIconLabel,
         Self::SetDefaultName,
         Self::NoSetLabel,
+        Self::EmptyStepsLabel,
     ];
 }
 
@@ -1073,9 +1079,19 @@ pub const TRANSLATIONS: &[Translation] = &[
         en: "Brightness down",
     },
     Translation {
+        key: TextKey::ActionMute,
+        fr: "Couper le son",
+        en: "Mute",
+    },
+    Translation {
         key: TextKey::ActionKindBrightness,
         fr: "Luminosité",
         en: "Brightness",
+    },
+    Translation {
+        key: TextKey::ActionKindMute,
+        fr: "Couper le son",
+        en: "Mute",
     },
     Translation {
         key: TextKey::SetVolume,
@@ -1131,6 +1147,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::NoSetLabel,
         fr: "Aucun groupe sélectionné",
         en: "No set selected",
+    },
+    Translation {
+        key: TextKey::EmptyStepsLabel,
+        fr: "Aucune étape pour l'instant. Ajoutez-en une ci-dessous.",
+        en: "No steps yet. Add one below.",
     },
 ];
 

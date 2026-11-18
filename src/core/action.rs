@@ -78,6 +78,8 @@ pub enum Action {
         /// Number of OS volume steps.
         steps: u8,
     },
+    /// Mute or unmute the system sound.
+    Mute,
     /// Change the screen brightness.
     Brightness {
         /// Direction of the change.
@@ -131,6 +133,7 @@ impl Action {
                 };
                 with_steps(label, *steps)
             }
+            Self::Mute => tr(language, TextKey::ActionMute).to_owned(),
             Self::Brightness { direction, steps } => {
                 let label = match direction {
                     VolumeDirection::Up => tr(language, TextKey::ActionBrightnessUp),
@@ -193,6 +196,7 @@ impl Action {
                 direction: VolumeDirection::Down,
                 steps: 1,
             },
+            Self::Mute,
             Self::Scroll {
                 axis: ScrollAxis::Vertical,
                 amount: -3,
@@ -266,9 +270,11 @@ impl Action {
                     Ok(())
                 }
             }
-            Self::None | Self::Shortcut { .. } | Self::MouseClick { .. } | Self::Media { .. } => {
-                Ok(())
-            }
+            Self::None
+            | Self::Mute
+            | Self::Shortcut { .. }
+            | Self::MouseClick { .. }
+            | Self::Media { .. } => Ok(()),
         }
     }
 }
@@ -341,6 +347,7 @@ mod tests {
                 direction: VolumeDirection::Down,
                 steps: 3,
             },
+            Action::Mute,
             Action::Scroll {
                 axis: ScrollAxis::Horizontal,
                 amount: -5,

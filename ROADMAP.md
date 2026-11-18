@@ -82,9 +82,9 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 ## M6 — Publication
 
-- [x] Version 0.1.1 (action-set wheel and wgpu renderer after the 0.1.0 tag).
+- [x] Version 0.1.2 (action-set wheel, mute action, larger icon set, wgpu renderer).
 - [x] Final commit and push.
-- [x] Tags `v0.1.0` and `v0.1.1` (no automated release artifacts for now).
+- [x] Tags `v0.1.0`, `v0.1.1` and `v0.1.2` (no automated release artifacts for now).
 
 ## Known v1 limitations
 

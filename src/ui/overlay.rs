@@ -4,13 +4,16 @@
 //! sector makes that set the active one; the wheel never runs an action
 //! directly.
 
-use crate::core::{ActionSet, Language, TextKey, WheelGeometry, tr};
+use crate::core::{ActionSet, WheelGeometry};
 use crate::ui::icons;
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 /// Size of the overlay viewport, in points.
-pub const OVERLAY_SIZE: f32 = 350.0;
+pub const OVERLAY_SIZE: f32 = 340.0;
+
+/// Margin kept between the wheel and the viewport edges.
+const WHEEL_MARGIN: f32 = 44.0;
 
 /// What the user did in the overlay this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +35,9 @@ pub struct OverlayState {
     pub hovered: Option<usize>,
     /// Outcome of the last frame, consumed by the shell.
     pub outcome: Option<OverlayOutcome>,
+    /// True once the overlay has seen its own focus, so losing focus later
+    /// closes it without closing on the very first frame.
+    pub focused_once: bool,
 }
 
 impl OverlayState {
@@ -41,6 +47,7 @@ impl OverlayState {
         self.selected = index.min(count.saturating_sub(1));
         self.hovered = None;
         self.outcome = None;
+        self.focused_once = false;
     }
 
     /// Moves the knob selection one set to the left.
@@ -75,7 +82,7 @@ pub fn viewport_builder() -> egui::ViewportBuilder {
 }
 
 /// Draws the wheel and records the outcome in `state`.
-pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: &mut OverlayState) {
+pub fn draw(ctx: &egui::Context, sets: &[ActionSet], state: &mut OverlayState) {
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = Color32::TRANSPARENT;
     visuals.window_fill = Color32::TRANSPARENT;
@@ -86,7 +93,17 @@ pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: 
         ctx.send_viewport_cmd(command);
     }
 
-    if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+    if ctx.input(|input| input.key_pressed(egui::Key::Escape))
+        || ctx.input(|input| input.viewport().close_requested())
+    {
+        state.outcome = Some(OverlayOutcome::Close);
+    }
+
+    // Clicking another window (or anything that takes focus) closes the wheel.
+    let focused = ctx.input(|input| input.viewport().focused).unwrap_or(true);
+    if focused {
+        state.focused_once = true;
+    } else if state.focused_once {
         state.outcome = Some(OverlayOutcome::Close);
     }
 
@@ -94,7 +111,7 @@ pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: 
         .frame(egui::Frame::NONE.fill(Color32::TRANSPARENT))
         .show(ctx, |ui| {
             let rect = ui.max_rect();
-            let size = rect.width().min(rect.height());
+            let size = (rect.width().min(rect.height()) - WHEEL_MARGIN).max(120.0);
             let square = Rect::from_center_size(rect.center(), Vec2::splat(size));
             let geometry = WheelGeometry::from_size(size);
             let center = square.min + egui::vec2(geometry.center_x, geometry.center_y);
@@ -120,7 +137,7 @@ pub fn draw(ctx: &egui::Context, language: Language, sets: &[ActionSet], state: 
 
             paint(ui, sets, state, &geometry, center, size);
 
-            painter_titles(ui, sets, state, rect, language);
+            painter_titles(ui, sets, state, rect);
         });
 }
 
@@ -182,32 +199,18 @@ fn paint(
     }
 }
 
-/// Writes the selected set name once, at the top of the wheel.
-fn painter_titles(
-    ui: &egui::Ui,
-    sets: &[ActionSet],
-    state: &OverlayState,
-    rect: Rect,
-    language: Language,
-) {
+/// Writes the selected set name once, below the wheel.
+fn painter_titles(ui: &egui::Ui, sets: &[ActionSet], state: &OverlayState, rect: Rect) {
     let painter = ui.painter();
     if let Some(set) = sets.get(state.selected).or_else(|| sets.first()) {
         painter.text(
-            rect.center_top() + egui::vec2(0.0, 22.0),
-            Align2::CENTER_CENTER,
+            rect.center_bottom() - egui::vec2(0.0, 14.0),
+            Align2::CENTER_BOTTOM,
             truncate(&set.name, 32),
-            FontId::proportional(15.0),
+            FontId::proportional(14.0),
             Color32::WHITE,
         );
     }
-
-    painter.text(
-        rect.center_bottom() - egui::vec2(0.0, 20.0),
-        Align2::CENTER_BOTTOM,
-        tr(language, TextKey::OverlayHint),
-        FontId::proportional(10.5),
-        Color32::from_white_alpha(150),
-    );
 }
 
 fn sector_points(center: Pos2, geometry: &WheelGeometry, start: f32, end: f32) -> Vec<Pos2> {
