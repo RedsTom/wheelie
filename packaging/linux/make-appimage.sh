@@ -39,5 +39,5 @@ if ! "$TOOL_BIN" --help >/dev/null 2>&1; then
 fi
 
 OUT="$OUT_DIR/Wheelie-$VERSION-x86_64.AppImage"
-ARCH=x86_64 "$TOOL_BIN" --no-check "$APPDIR" "$OUT"
+ARCH=x86_64 "$TOOL_BIN" "$APPDIR" "$OUT"
 ls -lh "$OUT_DIR"

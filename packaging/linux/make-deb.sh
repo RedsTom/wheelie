@@ -12,7 +12,9 @@ set -euo pipefail
 : "${OUT_DIR:?dist}"
 mkdir -p "$OUT_DIR"
 
-SAFE="${VERSION//-/~}"
+# Debian/rpm versions reject '-': prerelease suffixes map to '~' (note that a
+# bare ${VERSION//-/~} would tilde-expand the replacement to $HOME in bash).
+SAFE="$(printf '%s' "$VERSION" | tr '-' '~')"
 STAGE="$(mktemp -d)/debroot"
 
 install -D -m 755 "$BIN" "$STAGE/usr/bin/wheelie"

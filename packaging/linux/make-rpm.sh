@@ -12,7 +12,9 @@ set -euo pipefail
 : "${OUT_DIR:?dist}"
 mkdir -p "$OUT_DIR"
 
-SAFE="${VERSION//-/~}"
+# rpm versions reject '-': prerelease suffixes map to '~' (a bare
+# ${VERSION//-/~} would tilde-expand the replacement to $HOME in bash).
+SAFE="$(printf '%s' "$VERSION" | tr '-' '~')"
 
 # Staged install tree that the spec copies verbatim.
 STAGE="$(mktemp -d)/stage"

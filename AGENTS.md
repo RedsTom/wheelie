@@ -200,3 +200,5 @@ Rules:
 - `ROADMAP.md`: authoritative M0–M6 checklist.
 - `README.md`: public overview.
 - `.github/workflows/ci.yml`: exact CI matrix and Linux dependencies.
+- `.github/workflows/release.yml`: CD — installers and portable archives per
+  published release; packaging inputs in `packaging/` and `wix/main.wxs`.
