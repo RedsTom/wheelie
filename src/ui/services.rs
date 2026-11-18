@@ -5,7 +5,7 @@
 
 use crate::app::action_worker::discard_injected;
 use crate::app::{AppCommand, AppEvent, RuntimeState};
-use crate::core::{Control, InputEvent, TextKey, tr};
+use crate::core::{InputEvent, TextKey, tr};
 use crate::platform::{GlobalHotkeyService, HotkeySource, TrayCommand, TrayService};
 use std::time::Instant;
 use tracing::{info, warn};
@@ -216,17 +216,4 @@ pub fn apply_tray_command(state: &mut ShellState, command: &TrayCommand) {
         }
         TrayCommand::Show | TrayCommand::Hide => {}
     }
-}
-
-/// True when the runtime is not accepting knob input.
-pub fn is_paused(state: &ShellState) -> bool {
-    matches!(
-        state.snapshot.state,
-        RuntimeState::Paused | RuntimeState::Stopped
-    )
-}
-
-/// Guard used by callers that need the active test control.
-pub fn testing_control(state: &ShellState) -> Option<Control> {
-    state.testing
 }

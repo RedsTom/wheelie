@@ -68,8 +68,6 @@ pub struct ShellState {
     pub tray_language: Language,
     /// Tray creation failed.
     pub tray_failed: bool,
-    /// Settings window removed (close-to-tray).
-    pub hidden: bool,
     /// Quit requested.
     pub quitting: bool,
     /// Open settings window handle.
@@ -123,7 +121,6 @@ impl ShellState {
             tray: None,
             tray_language: preferences.language,
             tray_failed: false,
-            hidden: false,
             quitting: false,
             settings_window: None,
             settings_bounds: None,
@@ -372,11 +369,9 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
         }
         if show {
             window::focus_settings(cx, shared);
-            shared.borrow_mut().hidden = false;
         }
         if hide {
             window::close_settings(cx, shared);
-            shared.borrow_mut().hidden = true;
         }
         overlay_window::sync(cx, shared);
     }
