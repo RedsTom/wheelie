@@ -20,9 +20,7 @@ use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::PageState;
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{
-    assets, controls, gestures, osd_window, overlay_window, pages, services, style, window,
-};
+use crate::ui::{assets, gestures, osd_window, overlay_window, pages, services, style, window};
 use gpui::prelude::*;
 use gpui::{
     App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window, WindowHandle,
@@ -169,40 +167,9 @@ impl SettingsView {
         let shared = self.shared.clone();
         let weak = cx.weak_entity();
 
-        let nav = SettingsTab::ALL
+        let nav = SettingsTab::MAIN
             .iter()
-            .map(|tab| {
-                let selected = state.tab == *tab;
-                let tab = *tab;
-                let shared = shared.clone();
-                let weak = weak.clone();
-                div()
-                    .id(tab.label(language))
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py(px(7.0))
-                    .rounded(px(style::RADIUS_CONTROL))
-                    .when(selected, |div| div.bg(t.accent_soft))
-                    .when(selected, |div| div.text_color(style::ACCENT))
-                    .when(!selected, |div| div.text_color(t.muted))
-                    .hover(move |div| if selected { div } else { div.bg(t.card_hover) })
-                    .cursor_pointer()
-                    .child(
-                        gpui_icons::lucide(tab_icon(tab))
-                            .size(px(15.0))
-                            .text_color(if selected { style::ACCENT } else { t.muted }),
-                    )
-                    .child(tab.label(language))
-                    .on_click(move |_, _, cx| {
-                        shared.borrow_mut().tab = tab;
-                        if let Some(view) = weak.upgrade() {
-                            view.update(cx, |_, cx| cx.notify());
-                        }
-                    })
-            })
+            .map(|tab| nav_item(*tab, state.tab == *tab, t, language, &shared, &weak))
             .collect::<Vec<_>>();
 
         div()
@@ -244,7 +211,21 @@ impl SettingsView {
             )
             .children(nav)
             .child(div().flex_1())
-            .child(self.sidebar_preferences(state, t, language))
+            .child(
+                div()
+                    .mt_2()
+                    .border_t_1()
+                    .border_color(t.border)
+                    .pt_2()
+                    .child(nav_item(
+                        SettingsTab::Settings,
+                        state.tab == SettingsTab::Settings,
+                        t,
+                        language,
+                        &shared,
+                        &weak,
+                    )),
+            )
             .child(
                 div()
                     .mt_3()
@@ -253,194 +234,55 @@ impl SettingsView {
                     .child(format!("v{VERSION} · GPL-3.0")),
             )
     }
-
-    /// Bottom sidebar section: appearance, language and session startup.
-    fn sidebar_preferences(
-        &self,
-        state: &ShellState,
-        t: style::Tokens,
-        language: Language,
-    ) -> impl IntoElement {
-        let open = state.page.open_menu.as_deref();
-        let theme = state.preferences.theme_mode;
-        let native = state.preferences.language;
-        let width = style::SIDEBAR_WIDTH - 32.0;
-        let start_at_login = state
-            .runtime
-            .start_at_login_enabled()
-            .unwrap_or(state.runtime.config().general.start_at_login);
-
-        let theme_options = ThemeMode::ALL
-            .iter()
-            .map(|mode| theme_label(language, *mode).to_owned())
-            .collect::<Vec<_>>();
-        let theme_selected = ThemeMode::ALL
-            .iter()
-            .position(|mode| *mode == theme)
-            .unwrap_or(0);
-        let language_options = Language::ALL
-            .iter()
-            .map(|lang| lang.native_name().to_owned())
-            .collect::<Vec<_>>();
-        let language_selected = Language::ALL
-            .iter()
-            .position(|lang| *lang == native)
-            .unwrap_or(0);
-
-        let theme_shared = self.shared.clone();
-        let theme_pick = self.shared.clone();
-        let language_shared = self.shared.clone();
-        let language_pick = self.shared.clone();
-        let login_runtime = state.runtime.clone();
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(9.0))
-            .child(
-                div()
-                    .text_size(px(10.5))
-                    .text_color(t.muted)
-                    .child(tr(language, TextKey::Workspace)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(3.0))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(t.muted)
-                            .child(tr(language, TextKey::ThemeLabel)),
-                    )
-                    .child(
-                        div()
-                            .relative()
-                            .child(controls::select_button(
-                                "theme",
-                                t,
-                                theme_label(language, theme),
-                                open == Some("theme"),
-                                width,
-                                move |_, _, _| {
-                                    let mut state = theme_shared.borrow_mut();
-                                    state.page.open_menu =
-                                        if state.page.open_menu.as_deref() == Some("theme") {
-                                            None
-                                        } else {
-                                            Some("theme".to_owned())
-                                        };
-                                },
-                            ))
-                            .when(open == Some("theme"), |div| {
-                                div.child(controls::select_menu(
-                                    "theme",
-                                    t,
-                                    &theme_options,
-                                    theme_selected,
-                                    move |index, _, _| {
-                                        let mut state = theme_pick.borrow_mut();
-                                        state.preferences.theme_mode = ThemeMode::ALL[index];
-                                        state.page.open_menu = None;
-                                    },
-                                ))
-                            }),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(3.0))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(t.muted)
-                            .child(tr(language, TextKey::LanguageLabel)),
-                    )
-                    .child(
-                        div()
-                            .relative()
-                            .child(controls::select_button(
-                                "language",
-                                t,
-                                native.native_name(),
-                                open == Some("language"),
-                                width,
-                                move |_, _, _| {
-                                    let mut state = language_shared.borrow_mut();
-                                    state.page.open_menu =
-                                        if state.page.open_menu.as_deref() == Some("language") {
-                                            None
-                                        } else {
-                                            Some("language".to_owned())
-                                        };
-                                },
-                            ))
-                            .when(open == Some("language"), |div| {
-                                div.child(controls::select_menu(
-                                    "language",
-                                    t,
-                                    &language_options,
-                                    language_selected,
-                                    move |index, _, _| {
-                                        let mut state = language_pick.borrow_mut();
-                                        state.preferences.language = Language::ALL[index];
-                                        state.page.open_menu = None;
-                                    },
-                                ))
-                            }),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(3.0))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(t.muted)
-                            .child(tr(language, TextKey::StartAtLoginLabel)),
-                    )
-                    .child(controls::toggle(
-                        "autostart",
-                        start_at_login,
-                        move |_checked, _, _| {
-                            let enabled = !start_at_login;
-                            match login_runtime.set_start_at_login(enabled) {
-                                Ok(()) => {
-                                    if let Err(error) = login_runtime.update_config(|config| {
-                                        config.general.start_at_login = enabled;
-                                    }) {
-                                        login_runtime.report_error(error.to_string());
-                                    }
-                                }
-                                Err(error) => login_runtime.report_error(error.to_string()),
-                            }
-                        },
-                    )),
-            )
-    }
 }
 
-/// Translated theme mode label shared by the sidebar and settings pages.
-fn theme_label(language: Language, mode: ThemeMode) -> &'static str {
-    match mode {
-        ThemeMode::Dark => tr(language, TextKey::DarkTheme),
-        ThemeMode::Light => tr(language, TextKey::LightTheme),
-    }
+/// One sidebar tab, used both in the main list and for the pinned Settings tab.
+fn nav_item(
+    tab: SettingsTab,
+    selected: bool,
+    t: style::Tokens,
+    language: Language,
+    shared: &Shared,
+    weak: &gpui::WeakEntity<SettingsView>,
+) -> impl IntoElement {
+    let shared = shared.clone();
+    let weak = weak.clone();
+    div()
+        .id(tab.label(language))
+        .w_full()
+        .flex()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .py(px(7.0))
+        .rounded(px(style::RADIUS_CONTROL))
+        .when(selected, |div| div.bg(t.accent_soft))
+        .when(selected, |div| div.text_color(style::ACCENT))
+        .when(!selected, |div| div.text_color(t.muted))
+        .hover(move |div| if selected { div } else { div.bg(t.card_hover) })
+        .cursor_pointer()
+        .child(
+            gpui_icons::lucide(tab_icon(tab))
+                .size(px(15.0))
+                .text_color(if selected { style::ACCENT } else { t.muted }),
+        )
+        .child(tab.label(language))
+        .on_click(move |_, _, cx| {
+            shared.borrow_mut().tab = tab;
+            if let Some(view) = weak.upgrade() {
+                view.update(cx, |_, cx| cx.notify());
+            }
+        })
 }
 
 /// Drawer icon for one settings tab.
 fn tab_icon(tab: SettingsTab) -> gpui_icons::LucideIcon {
     match tab {
-        SettingsTab::General => gpui_icons::LucideIcon::Settings,
+        SettingsTab::General => gpui_icons::LucideIcon::LayoutDashboard,
         SettingsTab::Devices => gpui_icons::LucideIcon::SlidersHorizontal,
         SettingsTab::Actions => gpui_icons::LucideIcon::Waypoints,
         SettingsTab::Macros => gpui_icons::LucideIcon::ScrollText,
-        SettingsTab::About => gpui_icons::LucideIcon::Info,
+        SettingsTab::Settings => gpui_icons::LucideIcon::Settings,
     }
 }
 

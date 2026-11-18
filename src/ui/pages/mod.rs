@@ -5,11 +5,11 @@
 //! settings view. The eframe pages in `settings/` stay until their gpui
 //! replacements all land.
 
-mod about;
 pub(crate) mod actions;
 pub(crate) mod devices;
 mod general;
 pub(crate) mod macros;
+mod settings;
 
 use crate::app::RuntimeState;
 use crate::core::{CaptureMode, Language, PlatformInfo, TextKey, tr};
@@ -103,7 +103,7 @@ pub fn render(
     use crate::ui::settings::SettingsTab;
     match state.tab {
         SettingsTab::General => general::render(state, shared, window, cx).into_any_element(),
-        SettingsTab::About => about::render(state, shared, window, cx).into_any_element(),
+        SettingsTab::Settings => settings::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Devices => devices::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Macros => macros::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Actions => actions::render(state, shared, window, cx).into_any_element(),

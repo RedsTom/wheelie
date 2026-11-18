@@ -23,8 +23,8 @@ pub enum SettingsTab {
     Actions,
     /// Macro editor.
     Macros,
-    /// Version, license and platform information.
-    About,
+    /// Appearance, language and information about Wheelie.
+    Settings,
 }
 
 impl SettingsTab {
@@ -34,8 +34,11 @@ impl SettingsTab {
         Self::Devices,
         Self::Actions,
         Self::Macros,
-        Self::About,
+        Self::Settings,
     ];
+
+    /// Tabs in the main navigation; Settings is pinned to the bottom.
+    pub const MAIN: [Self; 4] = [Self::General, Self::Devices, Self::Actions, Self::Macros];
 
     /// Translated tab label.
     pub fn label(self, language: Language) -> &'static str {
@@ -44,7 +47,7 @@ impl SettingsTab {
             Self::Devices => tr(language, TextKey::TabDevices),
             Self::Actions => tr(language, TextKey::TabActions),
             Self::Macros => tr(language, TextKey::TabMacros),
-            Self::About => tr(language, TextKey::TabAbout),
+            Self::Settings => tr(language, TextKey::TabSettings),
         }
     }
 }
@@ -119,7 +122,7 @@ pub fn page(
         SettingsTab::Devices => devices::show(ui, context),
         SettingsTab::Actions => actions::show(ui, context),
         SettingsTab::Macros => macros::show(ui, context),
-        SettingsTab::About => about::show(ui, context),
+        SettingsTab::Settings => about::show(ui, context),
     }
 }
 
