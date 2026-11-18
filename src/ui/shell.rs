@@ -18,18 +18,49 @@ use crate::platform::{GlobalHotkeyService, InjectionGuard};
 use crate::ui::osd_window::{Osd, OsdView};
 use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
-use crate::ui::pages::PageState;
+use crate::ui::pages::{PageState, onboarding};
 use crate::ui::settings::{SettingsTab, UiPreferences};
 use crate::ui::{assets, gestures, osd_window, overlay_window, pages, services, style, window};
 use gpui::prelude::*;
 use gpui::{
-    App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window, WindowHandle,
-    div, px,
+    AnyElement, App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window,
+    WindowHandle, div, px,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tracing::info;
+
+/// Page of the first-launch introduction.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum OnboardingStep {
+    /// What Wheelie does and how the knob is used.
+    #[default]
+    Welcome,
+    /// Interface language choice.
+    Language,
+    /// Keys sent by the keyboard software for the three knob controls.
+    Keys,
+    /// Short summary before entering the settings.
+    Done,
+}
+
+impl OnboardingStep {
+    /// Every page in display order.
+    pub const ALL: [Self; 4] = [Self::Welcome, Self::Language, Self::Keys, Self::Done];
+
+    /// One-based position used in the progress indicator.
+    pub fn number(self) -> usize {
+        Self::ALL.iter().position(|step| *step == self).unwrap_or(0) + 1
+    }
+}
+
+/// Ephemeral state of the first-launch introduction.
+#[derive(Debug, Default)]
+pub struct OnboardingState {
+    /// Page currently on screen.
+    pub step: OnboardingStep,
+}
 
 /// Shared shell state: mutated by the tick, read by the settings view.
 pub struct ShellState {
@@ -39,6 +70,10 @@ pub struct ShellState {
     pub preferences: UiPreferences,
     /// Selected settings page.
     pub tab: SettingsTab,
+    /// First-launch introduction page.
+    pub onboarding: OnboardingState,
+    /// Whether the introduction replaces the settings for now.
+    pub onboarding_active: bool,
     /// Ephemeral page UI state (menus, buffers, focus).
     pub page: PageState,
     /// Latest runtime snapshot.
@@ -128,6 +163,8 @@ impl ShellState {
             runtime,
             preferences,
             tab: SettingsTab::default(),
+            onboarding: OnboardingState::default(),
+            onboarding_active: !config.onboarding_complete,
             page: PageState::new(cx),
             snapshot,
             platform,
@@ -294,12 +331,12 @@ impl Render for SettingsView {
         let state = self.shared.borrow();
         let t = style::tokens(state.preferences.theme_mode);
         let key_weak = cx.weak_entity();
-        let sidebar = self.sidebar(cx, &state);
         let focus = state.page.focus_capture.clone();
         let key_shared = self.shared.clone();
 
         // The key listener is a sibling, not an ancestor: a focusable root
-        // would take focus back on every click and starve text fields.
+        // would take focus back on every click and starve text fields. It is
+        // shared with the introduction so knob keys can be chosen there too.
         let listener = div()
             .id("capture-listener")
             .absolute()
@@ -313,6 +350,51 @@ impl Render for SettingsView {
                 }
             });
 
+        let body: AnyElement = if state.onboarding_active {
+            div()
+                .id("onboarding-scroll")
+                .flex_1()
+                .min_w(px(0.0))
+                .h_full()
+                .overflow_scroll()
+                .bg(t.bg)
+                .flex()
+                .justify_center()
+                .px(px(28.0))
+                .py(px(24.0))
+                .child(
+                    div()
+                        .id("onboarding-content")
+                        .w(px(720.0))
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.0))
+                        .child(onboarding::render(&state, &self.shared, window, cx)),
+                )
+                .into_any_element()
+        } else {
+            let sidebar = self.sidebar(cx, &state);
+            div()
+                .id("settings-body")
+                .flex()
+                .flex_1()
+                .min_w(px(0.0))
+                .child(sidebar)
+                .child(
+                    div()
+                        .id("page-scroll")
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .h_full()
+                        .overflow_scroll()
+                        .bg(t.bg)
+                        .px(px(28.0))
+                        .py(px(16.0))
+                        .child(pages::render(&state, &self.shared, window, cx)),
+                )
+                .into_any_element()
+        };
+
         div()
             .id("settings-root")
             .size_full()
@@ -321,19 +403,7 @@ impl Render for SettingsView {
             .text_size(px(14.0))
             .text_color(t.text)
             .bg(t.bg)
-            .child(sidebar)
-            .child(
-                div()
-                    .id("page-scroll")
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .h_full()
-                    .overflow_scroll()
-                    .bg(t.bg)
-                    .px(px(28.0))
-                    .py(px(16.0))
-                    .child(pages::render(&state, &self.shared, window, cx)),
-            )
+            .child(body)
             .child(listener)
     }
 }

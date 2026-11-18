@@ -90,6 +90,13 @@ pub struct Config {
     /// General settings.
     #[serde(default)]
     pub general: GeneralConfig,
+    /// Whether the first-launch introduction has been completed.
+    ///
+    /// Existing documents written before this field existed default to `true`
+    /// so an upgrade never shows the introduction again. Fresh installs start
+    /// with `false` and persist `true` when the user finishes it.
+    #[serde(default = "default_true")]
+    pub onboarding_complete: bool,
     /// Identifier of the active profile, when one is selected.
     #[serde(default)]
     pub active_profile: Option<String>,
@@ -136,6 +143,7 @@ impl Config {
             version: CONFIG_VERSION,
             language,
             general: GeneralConfig::default(),
+            onboarding_complete: false,
             active_profile: Some("default".to_owned()),
             profiles: vec![Profile::new("default", "Default", bindings)],
             active_set,
@@ -425,6 +433,25 @@ mod tests {
         assert!(config.active_profile().is_some());
         assert!(config.active_set().is_some());
         assert_eq!(config.action_sets.len(), 5);
+    }
+
+    #[test]
+    fn fresh_config_starts_before_the_introduction() {
+        assert!(!Config::default().onboarding_complete);
+    }
+
+    #[test]
+    fn documents_without_the_introduction_flag_are_already_introduced() {
+        let document = Config::default()
+            .to_toml_string()
+            .expect("serialize")
+            .lines()
+            .filter(|line| !line.starts_with("onboarding_complete"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let parsed = Config::from_toml_str(&document).expect("deserialize");
+        assert!(parsed.onboarding_complete);
     }
 
     #[test]

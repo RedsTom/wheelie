@@ -63,6 +63,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - [x] Tray icon and menu.
 - [x] Hide settings to tray and reopen from tray.
 - [x] Theme selection.
+- [x] First-launch introduction explaining the wheel and setting the language
+  and knob keys.
 
 ## M4 — OS hardening
 

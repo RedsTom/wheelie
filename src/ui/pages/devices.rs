@@ -46,7 +46,7 @@ pub(crate) fn render(
     page
 }
 
-fn bindings_card(
+pub(crate) fn bindings_card(
     state: &ShellState,
     shared: &Shared,
     t: Tokens,

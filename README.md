@@ -33,6 +33,8 @@ Wheelie is not affiliated with Microsoft.
   running in the tray.
 - Optional start at login.
 - French and English user interface, dark and light themes.
+- First-launch introduction that explains the wheel and sets the language and
+  knob keys.
 - Windows, macOS and Linux X11. Wayland is best-effort and clearly warned about.
 
 ## Platform support
@@ -75,6 +77,10 @@ Dependency direction: `core → platform → app → ui`. The root binary only w
 dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follow.
 
 ## Using Wheelie
+
+On a fresh install, a short introduction opens first: it explains the wheel,
+lets you choose the interface language and assign the three knob keys. It appears
+only once; later launches go straight to the settings.
 
 1. Open **Devices** and pick the keys your keyboard software sends for knob left,
    knob right and knob press. The three keys must be different; the live check

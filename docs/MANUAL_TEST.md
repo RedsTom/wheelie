@@ -11,6 +11,19 @@ each target platform before a release.
 - On macOS: Accessibility and Input Monitoring granted to Wheelie when prompted.
 - On Linux: an X11 session. Wayland is best-effort only.
 
+## First launch
+
+- [ ] Start Wheelie with no configuration file: the introduction opens on the
+      welcome page instead of the settings.
+- [ ] Choose English: the remaining pages, the tray menu and the settings use
+      English immediately.
+- [ ] Assign the three knob keys from the introduction; a duplicate key shows
+      the warning and is refused.
+- [ ] Finish the introduction, restart Wheelie: the settings open directly and
+      the language and keys are kept.
+- [ ] Start with an existing configuration file that predates the introduction:
+      the settings open directly.
+
 ## Key assignment
 
 - [ ] Open **Devices** and start the live check for left rotation.

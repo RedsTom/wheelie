@@ -232,6 +232,18 @@ pub enum TextKey {
     ConfirmDeleteStepBody,
     ConfirmDelete,
     CancelAction,
+    OnboardingTitle,
+    OnboardingSubtitle,
+    OnboardingLanguageTitle,
+    OnboardingLanguageBody,
+    OnboardingKeysTitle,
+    OnboardingKeysBody,
+    OnboardingKeysHint,
+    OnboardingDoneTitle,
+    OnboardingDoneBody,
+    OnboardingBack,
+    OnboardingNext,
+    OnboardingFinish,
 }
 
 impl TextKey {
@@ -411,6 +423,18 @@ impl TextKey {
         Self::ConfirmDeleteStepBody,
         Self::ConfirmDelete,
         Self::CancelAction,
+        Self::OnboardingTitle,
+        Self::OnboardingSubtitle,
+        Self::OnboardingLanguageTitle,
+        Self::OnboardingLanguageBody,
+        Self::OnboardingKeysTitle,
+        Self::OnboardingKeysBody,
+        Self::OnboardingKeysHint,
+        Self::OnboardingDoneTitle,
+        Self::OnboardingDoneBody,
+        Self::OnboardingBack,
+        Self::OnboardingNext,
+        Self::OnboardingFinish,
     ];
 }
 
@@ -1292,6 +1316,66 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::CancelAction,
         fr: "Annuler",
         en: "Cancel",
+    },
+    Translation {
+        key: TextKey::OnboardingTitle,
+        fr: "Bienvenue dans Wheelie",
+        en: "Welcome to Wheelie",
+    },
+    Translation {
+        key: TextKey::OnboardingSubtitle,
+        fr: "Quatre étapes rapides avant de commencer.",
+        en: "Four quick steps before you begin.",
+    },
+    Translation {
+        key: TextKey::OnboardingLanguageTitle,
+        fr: "Choisissez votre langue",
+        en: "Choose your language",
+    },
+    Translation {
+        key: TextKey::OnboardingLanguageBody,
+        fr: "L'interface change tout de suite. Vous pourrez revenir dessus plus tard.",
+        en: "The interface changes right away. You can change it again later.",
+    },
+    Translation {
+        key: TextKey::OnboardingKeysTitle,
+        fr: "Associez les touches du knob",
+        en: "Map the knob keys",
+    },
+    Translation {
+        key: TextKey::OnboardingKeysBody,
+        fr: "Pour chaque geste, sélectionnez le bouton puis appuyez sur la touche envoyée par votre clavier. Les trois touches doivent être différentes.",
+        en: "For each gesture, select the button and press the key your keyboard sends. The three keys must be different.",
+    },
+    Translation {
+        key: TextKey::OnboardingKeysHint,
+        fr: "Vous pouvez aussi conserver les touches proposées.",
+        en: "You can also keep the suggested keys.",
+    },
+    Translation {
+        key: TextKey::OnboardingDoneTitle,
+        fr: "Tout est prêt",
+        en: "You're all set",
+    },
+    Translation {
+        key: TextKey::OnboardingDoneBody,
+        fr: "Double-appuyez sur le knob pour ouvrir la roue. Choisissez un groupe, puis tournez le knob en dehors de la roue pour lancer ses actions.",
+        en: "Double-press the knob to open the wheel. Choose a set, then turn the knob outside the wheel to run its actions.",
+    },
+    Translation {
+        key: TextKey::OnboardingBack,
+        fr: "Retour",
+        en: "Back",
+    },
+    Translation {
+        key: TextKey::OnboardingNext,
+        fr: "Continuer",
+        en: "Continue",
+    },
+    Translation {
+        key: TextKey::OnboardingFinish,
+        fr: "Commencer",
+        en: "Start",
     },
 ];
 
