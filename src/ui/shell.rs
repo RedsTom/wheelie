@@ -11,21 +11,24 @@
 
 use crate::app::{RuntimeHandle, RuntimeSnapshot, RuntimeState};
 use crate::core::{
-    APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, TextKey, VERSION, tr,
+    APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, TextKey, ThemeMode,
+    VERSION, tr,
 };
 use crate::platform::{GlobalHotkeyService, InjectionGuard};
+use crate::ui::osd_window::{Osd, OsdView};
 use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::PageState;
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{assets, gestures, overlay_window, pages, services, style, window};
+use crate::ui::{assets, gestures, osd_window, overlay_window, pages, services, style, window};
 use gpui::prelude::*;
 use gpui::{
-    App, AsyncApp, Bounds, Context, Pixels, QuitMode, Render, Window, WindowHandle, div, px,
+    App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window, WindowHandle,
+    div, px,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 /// Shared shell state: mutated by the tick, read by the settings view.
@@ -56,10 +59,12 @@ pub struct ShellState {
     pub hotkeys_dirty: bool,
     /// Runtime paused or stopped.
     pub paused: bool,
-    /// Control currently being key-tested.
-    pub testing: Option<crate::core::Control>,
-    /// Last chord received during a key test.
-    pub last_key: Option<crate::core::KeyChord>,
+    /// Whether the key-capture listener suspended the global keys last tick.
+    pub capturing: bool,
+    /// Value waiting for the next key pressed in the settings window.
+    pub capture: Option<crate::ui::capture::CaptureTarget>,
+    /// Combination detected during the capture, waiting for confirmation.
+    pub capture_pending: Option<crate::core::KeyChord>,
     /// Radial wheel selection state (window lands in F3).
     pub overlay: OverlayState,
     /// Tray icon service.
@@ -76,13 +81,31 @@ pub struct ShellState {
     pub settings_bounds: Option<Bounds<Pixels>>,
     /// Open radial overlay window.
     pub overlay_window: Option<WindowHandle<OverlayView>>,
+    /// Overlay window awaiting deferred removal after close.
+    pub overlay_closing: Option<OverlayClosing>,
+    /// Volume or brightness indicator currently on screen, if any.
+    pub osd: Option<Osd>,
+    /// Open volume indicator window.
+    pub osd_window: Option<WindowHandle<OsdView>>,
+}
+
+/// Overlay window that was hidden but is not yet removed from gpui's map.
+///
+/// gpui dispatches active-status callbacks asynchronously, so the window must
+/// stay registered until its deactivation callback has drained. Removing it
+/// sooner makes that callback update a stale handle and log an error.
+pub struct OverlayClosing {
+    /// Handle kept alive until gpui has delivered the deactivation callback.
+    pub handle: WindowHandle<OverlayView>,
+    /// Earliest instant at which the window may be removed.
+    pub remove_at: Instant,
 }
 
 /// Shared handle type.
 pub type Shared = Rc<RefCell<ShellState>>;
 
 impl ShellState {
-    fn new(runtime: RuntimeHandle, cx: &App) -> Self {
+    fn new(runtime: RuntimeHandle, cx: &mut App) -> Self {
         let config = runtime.config();
         let preferences = UiPreferences {
             language: config.language,
@@ -113,8 +136,9 @@ impl ShellState {
             hotkeys_failed: false,
             hotkeys_dirty: true,
             paused: false,
-            testing: None,
-            last_key: None,
+            capturing: false,
+            capture: None,
+            capture_pending: None,
             overlay: OverlayState::default(),
             tray: None,
             tray_language: preferences.language,
@@ -123,6 +147,9 @@ impl ShellState {
             settings_window: None,
             settings_bounds: None,
             overlay_window: None,
+            overlay_closing: None,
+            osd: None,
+            osd_window: None,
         }
     }
 }
@@ -162,6 +189,7 @@ impl SettingsView {
                     .w_full()
                     .flex()
                     .items_center()
+                    .gap_2()
                     .px_3()
                     .py(px(7.0))
                     .rounded(px(style::RADIUS_CONTROL))
@@ -170,6 +198,11 @@ impl SettingsView {
                     .when(!selected, |div| div.text_color(t.muted))
                     .hover(move |div| if selected { div } else { div.bg(t.card_hover) })
                     .cursor_pointer()
+                    .child(
+                        gpui_icons::lucide(tab_icon(tab))
+                            .size(px(15.0))
+                            .text_color(if selected { style::ACCENT } else { t.muted }),
+                    )
                     .child(tab.label(language))
                     .on_click(move |_, _, cx| {
                         shared.borrow_mut().tab = tab;
@@ -252,7 +285,16 @@ impl SettingsView {
                             .text_color(t.muted)
                             .child(tr(language, TextKey::ActiveSetLabel)),
                     )
-                    .child(div().text_size(px(12.0)).text_color(t.text).child(profile)),
+                    .child(
+                        div()
+                            .w_full()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(px(12.0))
+                            .text_color(t.text)
+                            .child(profile),
+                    ),
             )
             .child(
                 div()
@@ -264,13 +306,43 @@ impl SettingsView {
     }
 }
 
+/// Drawer icon for one settings tab.
+fn tab_icon(tab: SettingsTab) -> gpui_icons::LucideIcon {
+    match tab {
+        SettingsTab::General => gpui_icons::LucideIcon::Settings,
+        SettingsTab::Devices => gpui_icons::LucideIcon::SlidersHorizontal,
+        SettingsTab::Actions => gpui_icons::LucideIcon::Waypoints,
+        SettingsTab::Macros => gpui_icons::LucideIcon::ScrollText,
+        SettingsTab::About => gpui_icons::LucideIcon::Info,
+    }
+}
+
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.shared.borrow();
         let t = style::tokens(state.preferences.theme_mode);
+        let key_weak = cx.weak_entity();
         let sidebar = self.sidebar(cx, &state);
+        let focus = state.page.focus_capture.clone();
+        let key_shared = self.shared.clone();
+
+        // The key listener is a sibling, not an ancestor: a focusable root
+        // would take focus back on every click and starve text fields.
+        let listener = div()
+            .id("capture-listener")
+            .absolute()
+            .size(px(0.0))
+            .track_focus(&focus)
+            .on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+                if crate::ui::capture::handle_key(&key_shared, event)
+                    && let Some(view) = key_weak.upgrade()
+                {
+                    view.update(cx, |_, cx| cx.notify());
+                }
+            });
 
         div()
+            .id("settings-root")
             .size_full()
             .flex()
             .font_family("Rubik")
@@ -290,7 +362,178 @@ impl Render for SettingsView {
                     .py(px(22.0))
                     .child(pages::render(&state, &self.shared, window, cx)),
             )
+            .child(listener)
     }
+}
+
+fn h(c: Rgba) -> Hsla {
+    c.into()
+}
+
+fn mix_rgba(a: Rgba, b: Rgba, t: f32) -> Rgba {
+    let t = t.clamp(0.0, 1.0);
+    Rgba {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a + (b.a - a.a) * t,
+    }
+}
+
+/// Syncs gpui-kit's global theme with the application's palette so kit-backed
+/// controls follow the app's dark/light mode and visual tokens.
+fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
+    let kit_mode = match mode {
+        ThemeMode::Dark => gpui_kit::component::ThemeMode::Dark,
+        ThemeMode::Light => gpui_kit::component::ThemeMode::Light,
+    };
+    gpui_kit::component::Theme::change(kit_mode, None, cx);
+
+    let t = style::tokens(mode);
+    let accent = h(style::ACCENT);
+    let accent_soft = h(t.accent_soft);
+    let bg = h(t.bg);
+    let card = h(t.card);
+    let card_hover = h(t.card_hover);
+    let border = h(t.border);
+    let text = h(t.text);
+    let muted = h(t.muted);
+    let success = h(style::SUCCESS);
+    let warning = h(style::WARNING);
+    let danger = h(style::DANGER);
+    let on_accent = h(style::rgb(0xFFFFFF));
+
+    gpui_kit::component::Theme::update(cx, |theme| {
+        theme.radius = px(style::RADIUS_CONTROL);
+        theme.radius_lg = px(style::RADIUS_CARD);
+
+        let c = &mut theme.colors;
+        c.background = bg;
+        c.foreground = text;
+        c.border = border;
+        c.input = border;
+        c.ring = accent;
+        c.caret = accent;
+        c.selection = accent_soft;
+        c.accent = accent_soft;
+        c.accent_foreground = text;
+
+        c.muted = card_hover;
+        c.muted_foreground = muted;
+
+        c.popover = card;
+        c.popover_foreground = text;
+
+        c.primary = accent;
+        c.primary_foreground = on_accent;
+        c.primary_hover = h(style::rgb(0x3D79E6));
+        c.primary_active = h(style::rgb(0x2F66CC));
+
+        c.secondary = card_hover;
+        c.secondary_foreground = text;
+        c.secondary_hover = h(mix_rgba(t.card_hover, t.border, 0.35));
+        c.secondary_active = h(mix_rgba(t.card_hover, t.border, 0.55));
+
+        c.button = card;
+        c.button_foreground = text;
+        c.button_hover = card_hover;
+        c.button_active = h(mix_rgba(t.card_hover, t.border, 0.25));
+        c.button_primary = accent;
+        c.button_primary_foreground = on_accent;
+        c.button_primary_hover = c.primary_hover;
+        c.button_primary_active = c.primary_active;
+        c.button_secondary = card_hover;
+        c.button_secondary_foreground = text;
+        c.button_secondary_hover = c.secondary_hover;
+        c.button_secondary_active = c.secondary_active;
+
+        c.danger = danger;
+        c.danger_foreground = on_accent;
+        c.danger_hover = h(style::rgb(0xDC2626));
+        c.danger_active = h(style::rgb(0xB91C1C));
+        c.button_danger = danger;
+        c.button_danger_foreground = on_accent;
+        c.button_danger_hover = c.danger_hover;
+        c.button_danger_active = c.danger_active;
+
+        c.success = success;
+        c.success_foreground = h(style::rgb(0x062016));
+        c.success_hover = h(style::rgb(0x10B981));
+        c.success_active = h(style::rgb(0x059669));
+        c.button_success = success;
+        c.button_success_foreground = c.success_foreground;
+        c.button_success_hover = c.success_hover;
+        c.button_success_active = c.success_active;
+
+        c.warning = warning;
+        c.warning_foreground = h(style::rgb(0x2A1600));
+        c.warning_hover = h(style::rgb(0xD97706));
+        c.warning_active = h(style::rgb(0xB45309));
+        c.button_warning = warning;
+        c.button_warning_foreground = c.warning_foreground;
+        c.button_warning_hover = c.warning_hover;
+        c.button_warning_active = c.warning_active;
+
+        c.info = accent;
+        c.info_foreground = on_accent;
+        c.info_hover = c.primary_hover;
+        c.info_active = c.primary_active;
+        c.button_info = accent;
+        c.button_info_foreground = on_accent;
+        c.button_info_hover = c.primary_hover;
+        c.button_info_active = c.primary_active;
+
+        c.group_box = card;
+        c.group_box_foreground = text;
+        c.list = card;
+        c.list_hover = card_hover;
+        c.list_active = accent_soft;
+        c.list_active_border = accent;
+        c.list_head = card;
+        c.list_even = card;
+        c.table = card;
+        c.table_hover = card_hover;
+        c.table_active = accent_soft;
+        c.table_active_border = accent;
+        c.table_head = card;
+        c.table_head_foreground = muted;
+        c.table_even = card;
+        c.table_row_border = border;
+        c.tab_bar = h(t.sidebar);
+        c.tab = h(t.sidebar);
+        c.tab_active = card;
+        c.tab_active_foreground = text;
+        c.tab_foreground = muted;
+        c.sidebar = h(t.sidebar);
+        c.sidebar_foreground = text;
+        c.sidebar_border = border;
+        c.sidebar_accent = accent_soft;
+        c.sidebar_accent_foreground = text;
+        c.sidebar_primary = accent;
+        c.sidebar_primary_foreground = on_accent;
+        c.title_bar = h(t.sidebar);
+        c.title_bar_border = border;
+        c.status_bar = h(t.sidebar);
+        c.status_bar_border = border;
+        c.switch = border;
+        c.switch_thumb = on_accent;
+        c.slider_bar = accent;
+        c.slider_thumb = on_accent;
+        c.scrollbar = h(Rgba { a: 0.0, ..t.bg });
+        c.scrollbar_thumb = h(mix_rgba(t.muted, t.bg, 0.35));
+        c.scrollbar_thumb_hover = h(mix_rgba(t.muted, t.bg, 0.15));
+        c.skeleton = card_hover;
+        c.link = accent;
+        c.link_hover = c.primary_hover;
+        c.link_active = c.primary_active;
+        c.overlay = h(Rgba {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.45,
+        });
+        c.window_border = border;
+    });
 }
 
 /// Runs the gpui application. Called from `main` via `ui::run`.
@@ -299,6 +542,7 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
         .with_assets(assets::WheelieAssets)
         .run(move |cx: &mut App| {
             cx.set_quit_mode(QuitMode::Explicit);
+            gpui_kit::component::init(cx);
 
             if let Err(error) = assets::install_fonts(cx) {
                 eprintln!("failed to load bundled fonts: {error}");
@@ -307,6 +551,8 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
 
             info!("gpui shell starting");
             let shared: Shared = Rc::new(RefCell::new(ShellState::new(runtime, cx)));
+            crate::ui::controls::install_fields(cx, shared.clone());
+            sync_kit_theme(shared.borrow().preferences.theme_mode, cx);
             window::open_settings(cx, &shared);
 
             let tick_shared = shared.clone();
@@ -329,12 +575,17 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
 /// quitting). A pending double-press deadline shortens the sleep so the
 /// 350 ms single-click window resolves on time.
 fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
+    let theme_before = shared.borrow().preferences.theme_mode;
     {
         let mut state = shared.borrow_mut();
         services::drain_events(&mut state);
         services::persist_preferences(&mut state);
         services::ensure_services(&mut state);
         services::sync_from_config(&mut state);
+    }
+    let theme_after = shared.borrow().preferences.theme_mode;
+    if theme_before != theme_after {
+        sync_kit_theme(theme_after, cx);
     }
 
     let commands = {
@@ -371,6 +622,7 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
             window::close_settings(cx, shared);
         }
         overlay_window::sync(cx, shared);
+        osd_window::sync(cx, shared);
     }
 
     window::reap_closed(cx, shared);

@@ -12,11 +12,12 @@ use gpui::{Context, Window, div, img, px};
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
-    _window: &Window,
+    window: &Window,
     _cx: &mut Context<SettingsView>,
 ) -> impl IntoElement {
     let t = style::tokens(state.preferences.theme_mode);
     let language = state.preferences.language;
+    let wide = window.viewport_size().width >= px(840.0);
 
     div()
         .flex()
@@ -27,33 +28,22 @@ pub(crate) fn render(
             tr(language, TextKey::TabGeneral),
             tr(language, TextKey::GeneralSubtitle),
         ))
-        .child(runtime_card(state, shared, t, language))
+        .child(runtime_card(state, t, language))
         .child(
             div()
                 .flex()
-                .items_start()
-                .gap(px(14.0))
+                .when(wide, |node| node.flex_row().items_start().gap(px(14.0)))
+                .when(!wide, |node| node.flex_col().gap(px(14.0)))
                 .child(
                     div()
-                        .flex_1()
-                        .min_w(px(0.0))
+                        .w_full()
                         .child(preferences_card(state, shared, t, language)),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .child(getting_started_card(t, language)),
-                ),
+                .child(div().w_full().child(getting_started_card(t, language))),
         )
 }
 
-fn runtime_card(
-    state: &ShellState,
-    shared: &Shared,
-    t: Tokens,
-    language: Language,
-) -> impl IntoElement {
+fn runtime_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoElement {
     let snapshot = &state.snapshot;
     let title = match snapshot.state {
         RuntimeState::Running | RuntimeState::Starting => TextKey::RuntimeReadyTitle,
@@ -71,7 +61,6 @@ fn runtime_card(
     let error = snapshot.last_error.clone();
 
     let runtime = state.runtime.clone();
-    let button_shared = shared.clone();
 
     controls::card(
         t,
@@ -129,7 +118,6 @@ fn runtime_card(
                                     pause_label(language, resume),
                                     move |_, _, _| {
                                         let _ = runtime.send(command);
-                                        button_shared.borrow_mut().testing = None;
                                     },
                                 )
                                 .into_any_element()
@@ -291,7 +279,7 @@ fn preferences_card(
                 t,
                 tr(language, TextKey::StartAtLoginLabel),
                 tr(language, TextKey::StartAtLoginDescription),
-                controls::toggle("autostart", start_at_login, move |_, _, _| {
+                controls::toggle("autostart", start_at_login, move |_checked, _, _| {
                     let enabled = !start_at_login;
                     match login_runtime.set_start_at_login(enabled) {
                         Ok(()) => {

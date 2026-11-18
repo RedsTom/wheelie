@@ -6,19 +6,29 @@
 use crate::core::APP_ID;
 use gpui::prelude::*;
 use gpui::{
-    App, Context, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, px, size,
+    App, Bounds, Context, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, px,
+    size,
 };
 
 use super::shell::{SettingsView, Shared};
 
+/// Initial window size, 16:9.
+const DEFAULT_WIDTH: f32 = 1280.0;
+const DEFAULT_HEIGHT: f32 = 720.0;
+
 /// Window options for the settings shell.
-pub fn settings_window_options() -> WindowOptions {
+pub fn settings_window_options(cx: &App) -> WindowOptions {
     WindowOptions {
         titlebar: Some(TitlebarOptions {
             title: Some(SharedString::from("Wheelie")),
             ..Default::default()
         }),
-        window_min_size: Some(size(px(960.0), px(620.0))),
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+            None,
+            size(px(DEFAULT_WIDTH), px(DEFAULT_HEIGHT)),
+            cx,
+        ))),
+        window_min_size: Some(size(px(960.0), px(540.0))),
         app_id: Some(APP_ID.to_owned()),
         ..Default::default()
     }
@@ -32,7 +42,7 @@ pub fn open_settings(cx: &mut App, shared: &Shared) {
 
     let options = {
         let state = shared.borrow();
-        let mut options = settings_window_options();
+        let mut options = settings_window_options(cx);
         // Restore the last size after a close-to-tray recreate.
         if let Some(bounds) = state.settings_bounds {
             options.window_bounds = Some(WindowBounds::Windowed(bounds));

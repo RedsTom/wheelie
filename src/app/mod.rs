@@ -13,4 +13,6 @@ pub mod runtime;
 pub use action_worker::execute_action;
 pub use config_store::{CONFIG_FILE_NAME, ConfigStore, LoadedConfig};
 pub use error::AppError;
-pub use runtime::{AppCommand, AppEvent, Runtime, RuntimeHandle, RuntimeSnapshot, RuntimeState};
+pub use runtime::{
+    AppCommand, AppEvent, Indicator, Runtime, RuntimeHandle, RuntimeSnapshot, RuntimeState,
+};

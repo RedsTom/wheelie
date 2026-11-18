@@ -5,8 +5,9 @@
 
 use crate::app::action_worker::discard_injected;
 use crate::app::{AppCommand, AppEvent, RuntimeState};
-use crate::core::{InputEvent, TextKey, tr};
+use crate::core::{TextKey, tr};
 use crate::platform::{GlobalHotkeyService, HotkeySource, TrayCommand, TrayService};
+use crate::ui::osd_window::Osd;
 use std::time::Instant;
 use tracing::{info, warn};
 
@@ -19,6 +20,9 @@ pub fn drain_events(state: &mut ShellState) {
         match event {
             AppEvent::StateChanged(snapshot) => state.snapshot = snapshot,
             AppEvent::Error(message) => state.snapshot.last_error = Some(message),
+            AppEvent::Indicator(indicator) => {
+                state.osd = Some(Osd::new(indicator));
+            }
         }
     }
 }
@@ -96,6 +100,15 @@ pub fn sync_from_config(state: &mut ShellState) {
         state.paused = paused;
         state.hotkeys_dirty = true;
     }
+
+    // While a key capture is pending, the watched keys must be released:
+    // an exclusively captured key never reaches the settings window, so the
+    // wheel, its actions and the capture itself would all fight for the press.
+    let capturing = state.capture.is_some();
+    if capturing != state.capturing {
+        state.capturing = capturing;
+        state.hotkeys_dirty = true;
+    }
 }
 
 /// Re-registers the watched keys after bindings, pause or test changes.
@@ -109,10 +122,8 @@ pub fn apply_hotkeys_if_needed(state: &mut ShellState) {
         return;
     };
 
-    let result = if state.paused {
+    let result = if state.paused || state.capturing {
         service.unregister_all()
-    } else if let Some(control) = state.testing {
-        service.apply(&[state.detector.bindings().chord_for(control)])
     } else {
         let bindings = state.detector.bindings();
         service.apply(&[bindings.left, bindings.right, bindings.press])
@@ -121,7 +132,7 @@ pub fn apply_hotkeys_if_needed(state: &mut ShellState) {
     match result {
         Ok(()) => state
             .runtime
-            .set_capture_active(!state.paused && state.testing.is_none()),
+            .set_capture_active(!state.paused && !state.capturing),
         Err(error) => {
             state.runtime.set_capture_active(false);
             state.runtime.report_error(error.to_string());
@@ -138,15 +149,6 @@ pub fn poll_hotkeys(state: &mut ShellState) {
     let events = discard_injected(events, &state.injection);
 
     if events.is_empty() {
-        return;
-    }
-
-    if state.testing.is_some() {
-        for event in &events {
-            if let InputEvent::Pressed(chord) = event {
-                state.last_key = Some(*chord);
-            }
-        }
         return;
     }
 
@@ -204,7 +206,6 @@ pub fn active_set_name(state: &ShellState) -> String {
 pub fn apply_tray_command(state: &mut ShellState, command: &TrayCommand) {
     match command {
         TrayCommand::Pause => {
-            state.testing = None;
             let _ = state.runtime.send(AppCommand::Pause);
         }
         TrayCommand::Resume => {

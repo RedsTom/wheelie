@@ -73,6 +73,17 @@ pub enum AppEvent {
     StateChanged(RuntimeSnapshot),
     /// An error should be displayed.
     Error(String),
+    /// A volume or brightness change the UI shows on screen.
+    Indicator(Indicator),
+}
+
+/// Level reported after a volume or brightness change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Indicator {
+    /// System output volume and mute state.
+    Volume(crate::platform::volume::Level),
+    /// Screen brightness in percent.
+    Brightness(u8),
 }
 
 /// Cloneable handle used by the UI to observe and control the runtime.

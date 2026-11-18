@@ -114,9 +114,13 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
   wgpu renderer clears with alpha=0, so pixels outside the wheel circle are fully
   transparent. No secondary viewport is used — wgpu does not alpha-composite
   secondary viewports on Windows.
-- Volume via `enigo` media keys; scroll via `enigo` wheel. Brightness uses
-  `enigo` brightness keys, which only exist on macOS in 0.6.1; report the action
-  as unavailable elsewhere instead of adding platform audio/display code.
+- Volume uses each OS audio API (`platform/volume.rs`: Core Audio on Windows,
+  `wpctl`/`pactl` on Linux, `osascript` on macOS), never media keys, so a knob
+  bound to volume keys does not feed back into itself. Scroll via `enigo` wheel.
+- Brightness (`platform/brightness.rs`): WMI `WmiMonitorBrightnessMethods` on
+  Windows (laptop panels only), `brightnessctl` on Linux, `enigo` brightness keys
+  on macOS (no level is reported there, so no indicator). A display without
+  brightness control reports an error when the action runs.
 - The app must stay usable with no knob configured: settings and tray still work.
 
 ## Conventions

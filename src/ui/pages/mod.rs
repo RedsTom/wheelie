@@ -6,10 +6,10 @@
 //! replacements all land.
 
 mod about;
-mod actions;
-mod devices;
+pub(crate) mod actions;
+pub(crate) mod devices;
 mod general;
-mod macros;
+pub(crate) mod macros;
 
 use crate::app::RuntimeState;
 use crate::core::{CaptureMode, Language, PlatformInfo, TextKey, tr};
@@ -61,6 +61,8 @@ pub struct PageState {
     pub path_buffer: String,
     /// Select-all-on-first-input flag for the launch-path field.
     pub path_buffer_fresh: bool,
+    /// Focus of the settings root while a key capture is pending.
+    pub focus_capture: FocusHandle,
 }
 
 impl PageState {
@@ -86,6 +88,7 @@ impl PageState {
             focus_path: cx.focus_handle(),
             path_buffer: String::new(),
             path_buffer_fresh: true,
+            focus_capture: cx.focus_handle(),
         }
     }
 }
@@ -94,7 +97,7 @@ impl PageState {
 pub fn render(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     cx: &mut Context<SettingsView>,
 ) -> AnyElement {
     use crate::ui::settings::SettingsTab;
@@ -109,7 +112,7 @@ pub fn render(
 
 /// Hairline separator inside a card.
 pub fn separator(t: Tokens) -> impl IntoElement {
-    div().w_full().h(px(1.0)).bg(t.border)
+    gpui_kit::component::separator::Separator::horizontal().color(gpui::Hsla::from(t.border))
 }
 
 /// Muted value row: label left, value right.

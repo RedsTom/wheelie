@@ -7,16 +7,22 @@
 //! The wheel is always its own window; the settings window stays open.
 
 use crate::core::APP_ID;
+use crate::platform::window_frame;
 use crate::ui::gestures;
 use crate::ui::overlay::{OVERLAY_SIZE, OverlayOutcome};
-use crate::ui::shell::Shared;
+use crate::ui::shell::{OverlayClosing, Shared};
 use crate::ui::wheel_paint;
 use gpui::prelude::*;
 use gpui::{
-    App, Context, FocusHandle, KeyDownEvent, MouseButton, Render, TitlebarOptions, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, px,
-    size,
+    App, Context, FocusHandle, KeyDownEvent, Render, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowDecorations, WindowKind, WindowOptions, canvas, div, point, px, size,
 };
+use std::time::{Duration, Instant};
+
+/// Time given to gpui to deliver the deactivation callback after the overlay
+/// is hidden. The callback is dispatched asynchronously and would otherwise
+/// try to update a window gpui has already removed.
+const CLOSE_DELAY: Duration = Duration::from_millis(120);
 
 /// Opens the overlay window unless it is already open.
 pub(crate) fn open(shared: &Shared, cx: &mut App) {
@@ -30,23 +36,26 @@ pub(crate) fn open(shared: &Shared, cx: &mut App) {
             size(px(OVERLAY_SIZE), px(OVERLAY_SIZE)),
             cx,
         ))),
-        titlebar: Some(TitlebarOptions {
-            title: Some("Wheelie".into()),
-            appears_transparent: true,
-            traffic_light_position: None,
-        }),
+        titlebar: None,
+        window_decorations: Some(WindowDecorations::Client),
         kind: WindowKind::PopUp,
         is_movable: false,
         is_resizable: false,
         is_minimizable: false,
         window_background: WindowBackgroundAppearance::Transparent,
         app_id: Some(APP_ID.to_owned()),
+        show: false,
         ..Default::default()
     };
 
     let view_shared = shared.clone();
     let handle = cx
         .open_window(options, move |window, cx| {
+            // Created hidden: the frame is removed before the first frame is
+            // shown, so the border never flashes.
+            if let Err(error) = window_frame::strip_frame(&*window) {
+                tracing::warn!(%error, "could not remove the wheel window frame");
+            }
             let focus = cx.focus_handle();
             focus.focus(window, cx);
             let build_shared = view_shared.clone();
@@ -57,20 +66,45 @@ pub(crate) fn open(shared: &Shared, cx: &mut App) {
         })
         .expect("open overlay window");
 
+    // Showing a window created hidden goes through `activate_window`.
+    let _ = handle.update(cx, |_, window, _| window.activate_window());
     shared.borrow_mut().overlay_window = Some(handle);
 }
 
-/// Closes the overlay window if open.
+/// Starts closing the overlay window.
+///
+/// The window is hidden immediately so Windows delivers `WM_ACTIVATE` while
+/// gpui still knows the window. gpui dispatches that callback asynchronously,
+/// so removal is deferred until [`sync`] confirms the delay elapsed. Removing
+/// an active window straight away makes the late callback log "window not
+/// found".
 pub(crate) fn close(shared: &Shared, cx: &mut App) {
     let handle = shared.borrow_mut().overlay_window.take();
     if let Some(handle) = handle {
-        let _ = handle.update(cx, |_, window, _| window.remove_window());
+        let _ = handle.update(cx, |_, window, _| window_frame::hide_window(window));
+        let _ = handle.update(cx, |_, window, cx| window.blur(cx));
+        shared.borrow_mut().overlay_closing = Some(OverlayClosing {
+            handle,
+            remove_at: Instant::now() + CLOSE_DELAY,
+        });
     }
 }
 
 /// Processes outcomes, polls focus and keeps the window in sync with
 /// `OverlayState`. Called once per tick from the shell.
 pub(crate) fn sync(cx: &mut App, shared: &Shared) {
+    // Finish a close only after gpui has drained the deactivation callback.
+    let closing_ready = shared
+        .borrow()
+        .overlay_closing
+        .as_ref()
+        .is_some_and(|closing| Instant::now() >= closing.remove_at);
+    if closing_ready && let Some(closing) = shared.borrow_mut().overlay_closing.take() {
+        let _ = closing
+            .handle
+            .update(cx, |_, window, _| window.remove_window());
+    }
+
     // Focus-loss close: once the overlay had focus, losing it closes the
     // wheel (old `viewport().focused` polling in the eframe shell).
     let focus_state = {
@@ -104,15 +138,34 @@ pub(crate) fn sync(cx: &mut App, shared: &Shared) {
     }
 
     // Window lifecycle: the wheel is always its own window; the settings
-    // window stays open behind it.
-    let (should_open, has_window) = {
+    // window stays open behind it. A pending close must finish before a new
+    // window opens, otherwise both handles point at the same native window.
+    let (should_open, has_window, closing) = {
         let state = shared.borrow();
-        (state.overlay.open, state.overlay_window.is_some())
+        (
+            state.overlay.open,
+            state.overlay_window.is_some(),
+            state.overlay_closing.is_some(),
+        )
     };
-    if should_open && !has_window {
+    if should_open && !has_window && !closing {
         open(shared, cx);
     } else if !should_open && has_window {
         close(shared, cx);
+    }
+
+    // Knob rotation changes the selection without any pointer event, so the
+    // wheel window must be repainted every tick while it is open.
+    if should_open {
+        notify(shared, cx);
+    }
+}
+
+/// Repaints the wheel window so knob-driven selection shows up immediately.
+fn notify(shared: &Shared, cx: &mut App) {
+    let handle = shared.borrow().overlay_window;
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, _, cx| cx.notify());
     }
 }
 
@@ -128,7 +181,8 @@ impl Render for OverlayView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sets = self.shared.borrow().runtime.config().action_sets.clone();
         let selected = self.shared.borrow().overlay.selected;
-        let hovered = self.shared.borrow().overlay.hovered;
+        // The wheel ignores the mouse: it is driven by the knob and Escape.
+        let hovered = None;
 
         let center = point(px(OVERLAY_SIZE / 2.0), px(OVERLAY_SIZE / 2.0));
         let geometry = wheel_paint::geometry(OVERLAY_SIZE);
@@ -136,16 +190,19 @@ impl Render for OverlayView {
 
         // Icons + title over the painted wheel (shared with the settings preview).
         let title_y = f32::from(center.y) + geometry.outer_radius + 22.0;
-        let wheel_children =
-            wheel_paint::children(&geometry, origin, title_y, OVERLAY_SIZE, &sets, selected);
+        let wheel_children = wheel_paint::children(
+            &geometry,
+            origin,
+            title_y,
+            OVERLAY_SIZE,
+            &sets,
+            selected,
+            true,
+        );
 
         // Input state: shared + weak handle to trigger repaints.
         let key_shared = self.shared.clone();
         let key_weak = cx.weak_entity();
-        let move_shared = self.shared.clone();
-        let move_weak = cx.weak_entity();
-        let down_shared = self.shared.clone();
-        let down_weak = cx.weak_entity();
         let focus = self.focus.clone();
 
         div()
@@ -181,33 +238,6 @@ impl Render for OverlayView {
                     if let Some(view) = key_weak.upgrade() {
                         view.update(cx, |_, cx| cx.notify());
                     }
-                }
-            })
-            .on_mouse_move(move |event, _, cx| {
-                let count = move_shared.borrow().runtime.config().action_sets.len();
-                let hovered = wheel_paint::sector_at(&geometry, count, origin, event.position);
-                let mut state = move_shared.borrow_mut();
-                if state.overlay.hovered != hovered {
-                    state.overlay.hovered = hovered;
-                    if let Some(view) = move_weak.upgrade() {
-                        view.update(cx, |_, cx| cx.notify());
-                    }
-                }
-            })
-            .on_mouse_down(MouseButton::Left, move |event, _, cx| {
-                let count = down_shared.borrow().runtime.config().action_sets.len();
-                let outcome = match wheel_paint::sector_at(&geometry, count, origin, event.position)
-                {
-                    Some(index) => OverlayOutcome::Confirm(index),
-                    None if wheel_paint::is_center(&geometry, origin, event.position) => {
-                        let selected = down_shared.borrow().overlay.selected;
-                        OverlayOutcome::Confirm(selected)
-                    }
-                    None => OverlayOutcome::Close,
-                };
-                down_shared.borrow_mut().overlay.outcome = Some(outcome);
-                if let Some(view) = down_weak.upgrade() {
-                    view.update(cx, |_, cx| cx.notify());
                 }
             })
     }

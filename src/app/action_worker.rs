@@ -6,10 +6,11 @@
 //! keys themselves.
 
 use super::error::AppError;
-use super::runtime::AppEvent;
+use super::runtime::{AppEvent, Indicator};
 use crate::core::action::Action;
 use crate::core::macro_engine::{MacroDefinition, MacroSink, run_macro};
 use crate::core::{Config, InputEvent};
+use crate::platform::volume;
 use crate::platform::{EnigoInputSink, InjectionGuard, InputSink};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -82,9 +83,23 @@ fn run(
             ActionJob::Execute(action) => {
                 let macros = read_config(config).macros.clone();
                 cancel.store(false, Ordering::Relaxed);
-                if let Err(message) = execute_action(&mut sink, guard, &macros, &action, &cancel) {
-                    warn!(%message, "action failed");
-                    let _ = events.send(AppEvent::Error(message));
+                match execute_action(&mut sink, guard, &macros, &action, &cancel) {
+                    Err(message) => {
+                        warn!(%message, "action failed");
+                        let _ = events.send(AppEvent::Error(message));
+                    }
+                    Ok(reported) => {
+                        let indicator = match &action {
+                            Action::Volume { .. } | Action::Mute => {
+                                volume::level().ok().map(Indicator::Volume)
+                            }
+                            Action::Brightness { .. } => reported.map(Indicator::Brightness),
+                            _ => None,
+                        };
+                        if let Some(indicator) = indicator {
+                            let _ = events.send(AppEvent::Indicator(indicator));
+                        }
+                    }
                 }
             }
         }
@@ -100,36 +115,51 @@ pub fn execute_action<S>(
     macros: &[MacroDefinition],
     action: &Action,
     cancel: &AtomicBool,
-) -> Result<(), String>
+) -> Result<Option<u8>, String>
 where
     S: InputSink + MacroSink,
 {
     let _scope = guard.scope();
 
     match action {
-        Action::None => Ok(()),
+        Action::None => Ok(None),
         Action::Volume { direction, steps } => sink
             .volume(*direction, *steps)
+            .map(|()| None)
             .map_err(|error| error.to_string()),
-        Action::Mute => sink.volume_mute().map_err(|error| error.to_string()),
+        Action::Mute => sink
+            .volume_mute()
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
         Action::Brightness { direction, steps } => sink
             .brightness(*direction, *steps)
             .map_err(|error| error.to_string()),
-        Action::Scroll { axis, amount } => {
-            InputSink::scroll(sink, *axis, *amount).map_err(|error| error.to_string())
-        }
-        Action::Shortcut { chord } => sink.tap_chord(*chord).map_err(|error| error.to_string()),
-        Action::MouseClick { button } => {
-            InputSink::mouse_click(sink, *button).map_err(|error| error.to_string())
-        }
-        Action::Media { command } => sink.media(*command).map_err(|error| error.to_string()),
-        Action::Launch { path } => sink.launch(path).map_err(|error| error.to_string()),
+        Action::Scroll { axis, amount } => InputSink::scroll(sink, *axis, *amount)
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
+        Action::Shortcut { chord } => sink
+            .tap_chord(*chord)
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
+        Action::MouseClick { button } => InputSink::mouse_click(sink, *button)
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
+        Action::Media { command } => sink
+            .media(*command)
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
+        Action::Launch { path } => sink
+            .launch(path)
+            .map(|()| None)
+            .map_err(|error| error.to_string()),
         Action::Macro { name } => {
             let definition = macros
                 .iter()
                 .find(|definition| &definition.name == name)
                 .ok_or_else(|| format!("unknown macro: {name}"))?;
-            run_macro(sink, &definition.steps, cancel).map_err(|error| error.to_string())
+            run_macro(sink, &definition.steps, cancel)
+                .map(|()| None)
+                .map_err(|error| error.to_string())
         }
     }
 }

@@ -12,15 +12,13 @@ impl AssetSource for WheelieAssets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
         match LucideAssetSource.load(path) {
             Ok(Some(asset)) => Ok(Some(asset)),
-            Ok(None) => Ok(match path {
-                "icons/plus.svg" => {
-                    Some(Cow::Borrowed(include_bytes!("../../assets/icons/plus.svg")))
+            Ok(None) => {
+                if let Some(asset) = own_asset(path) {
+                    return Ok(Some(asset));
                 }
-                "logo/logo-2x.png" => Some(Cow::Borrowed(include_bytes!(
-                    "../../assets/logo/logo-2x.png"
-                ))),
-                _ => None,
-            }),
+                // Kit components (Input menus, icons) resolve their own files.
+                gpui_kit::assets::AllAssets.load(path)
+            }
             Err(error) => Err(error),
         }
     }
@@ -33,6 +31,17 @@ impl AssetSource for WheelieAssets {
                 _ => Vec::new(),
             }),
         }
+    }
+}
+
+/// Wheelie-owned embedded files, outside the shared Lucide catalog.
+fn own_asset(path: &str) -> Option<Cow<'static, [u8]>> {
+    match path {
+        "icons/plus.svg" => Some(Cow::Borrowed(include_bytes!("../../assets/icons/plus.svg"))),
+        "logo/logo-2x.png" => Some(Cow::Borrowed(include_bytes!(
+            "../../assets/logo/logo-2x.png"
+        ))),
+        _ => None,
     }
 }
 

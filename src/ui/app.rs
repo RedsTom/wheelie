@@ -139,6 +139,7 @@ impl WheelieApp {
             match event {
                 AppEvent::StateChanged(snapshot) => self.snapshot = snapshot,
                 AppEvent::Error(message) => self.snapshot.last_error = Some(message),
+                AppEvent::Indicator(_) => {}
             }
         }
     }

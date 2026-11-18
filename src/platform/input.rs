@@ -3,8 +3,10 @@
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
 use crate::core::key::KeyChord;
 use crate::core::macro_engine::MacroSink;
+use crate::platform::brightness;
 use crate::platform::error::PlatformError;
 use crate::platform::key_map::{to_enigo_key, to_enigo_modifiers};
+use crate::platform::volume;
 use enigo::{Axis, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use std::path::Path;
 
@@ -28,8 +30,13 @@ pub trait InputSink: Send {
     /// Changes the system volume by OS steps.
     fn volume(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError>;
 
-    /// Changes the screen brightness by OS steps.
-    fn brightness(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError>;
+    /// Changes the screen brightness by OS steps. Returns the new level in
+    /// percent when the OS reports it.
+    fn brightness(
+        &mut self,
+        direction: VolumeDirection,
+        steps: u8,
+    ) -> Result<Option<u8>, PlatformError>;
 
     /// Toggles the system mute state.
     fn volume_mute(&mut self) -> Result<(), PlatformError>;
@@ -119,17 +126,14 @@ impl InputSink for EnigoInputSink {
     }
 
     fn volume(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
-        let key = match direction {
-            VolumeDirection::Up => Key::VolumeUp,
-            VolumeDirection::Down => Key::VolumeDown,
-        };
-        for _ in 0..steps {
-            self.enigo.key(key, Direction::Click)?;
-        }
-        Ok(())
+        volume::adjust(direction, steps)
     }
 
-    fn brightness(&mut self, direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
+    fn brightness(
+        &mut self,
+        direction: VolumeDirection,
+        steps: u8,
+    ) -> Result<Option<u8>, PlatformError> {
         #[cfg(target_os = "macos")]
         {
             let key = match direction {
@@ -139,20 +143,16 @@ impl InputSink for EnigoInputSink {
             for _ in 0..steps {
                 self.enigo.key(key, Direction::Click)?;
             }
-            Ok(())
+            Ok(None)
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = (direction, steps);
-            Err(PlatformError::Unsupported(
-                "screen brightness is not available on this platform",
-            ))
+            brightness::adjust(direction, steps)
         }
     }
 
     fn volume_mute(&mut self) -> Result<(), PlatformError> {
-        self.enigo.key(Key::VolumeMute, Direction::Click)?;
-        Ok(())
+        volume::toggle_mute()
     }
 
     fn media(&mut self, command: MediaCommand) -> Result<(), PlatformError> {

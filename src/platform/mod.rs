@@ -5,6 +5,7 @@
 //! application layer.
 
 pub mod autostart;
+pub mod brightness;
 pub mod error;
 pub mod guard;
 pub mod hotkeys;
@@ -16,6 +17,8 @@ pub mod key_map;
 pub mod mock;
 pub mod paths;
 pub mod tray;
+pub mod volume;
+pub mod window_frame;
 
 pub use crate::core::PlatformInfo;
 pub use autostart::AutoStartService;

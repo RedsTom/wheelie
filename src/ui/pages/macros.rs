@@ -1,19 +1,20 @@
 //! Macros page: list and edit reusable input sequences (gpui port).
 
-use crate::app::{AppError, RuntimeHandle};
+use crate::app::RuntimeHandle;
 use crate::core::action::{MouseButton, ScrollAxis};
 use crate::core::{Config, KeyChord, KeyCode, Language, MacroDefinition, MacroStep, TextKey, tr};
-use crate::ui::controls::{self, Edit};
+use crate::ui::capture::{self, CaptureTarget};
+use crate::ui::controls;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
-use gpui::{AnyElement, App, ClickEvent, Context, Window, div, px};
+use gpui::{AnyElement, App, Context, Window, div, px};
 
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
-    _cx: &mut Context<SettingsView>,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
 ) -> impl IntoElement {
     let t = style::tokens(state.preferences.theme_mode);
     let language = state.preferences.language;
@@ -25,6 +26,7 @@ pub(crate) fn render(
         .as_deref()
         .and_then(|name| macros.iter().position(|m| m.name == name))
         .or(if macros.is_empty() { None } else { Some(0) });
+    let wide = window.viewport_size().width >= px(720.0);
 
     div()
         .flex()
@@ -38,12 +40,22 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
-                .items_start()
-                .gap(px(20.0))
-                .child(macro_column(state, shared, t, language, macros, selected))
-                .child(div().flex_1().min_w(px(0.0)).child(editor_column(
-                    state, shared, window, t, language, &config, selected,
-                ))),
+                .when(wide, |node| node.flex_row().items_start().gap(px(20.0)))
+                .when(!wide, |node| node.flex_col().gap(px(14.0)))
+                .child(
+                    div()
+                        .when(wide, |node| node.w(px(280.0)).flex_none())
+                        .when(!wide, |node| node.w_full())
+                        .child(macro_column(state, shared, t, language, macros, selected)),
+                )
+                .child(
+                    div()
+                        .when(wide, |node| node.flex_1().min_w(px(420.0)))
+                        .when(!wide, |node| node.w_full())
+                        .child(editor_column(
+                            state, shared, window, t, language, &config, selected, &mut *cx,
+                        )),
+                ),
         )
 }
 
@@ -82,6 +94,9 @@ fn macro_column(
                     div()
                         .flex_1()
                         .min_w(px(0.0))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
                         .text_size(px(13.0))
                         .text_color(if is_selected { t.text } else { t.muted })
                         .child(name.clone()),
@@ -95,24 +110,17 @@ fn macro_column(
         })
         .collect::<Vec<_>>();
 
-    let delete_target = selected
-        .and_then(|index| macros.get(index))
-        .map(|definition| definition.name.clone());
-
     let add_shared = shared.clone();
     let add_runtime = state.runtime.clone();
-    let del_shared = shared.clone();
-    let del_runtime = state.runtime.clone();
 
     div()
-        .flex_none()
-        .w(px(280.0))
+        .w_full()
         .flex()
         .flex_col()
         .gap_3()
-        .child(icon_text_button(
+        .child(controls::icon_text_button(
+            "new-macro",
             t,
-            "new-macro".to_owned(),
             gpui_icons::LucideIcon::Plus,
             tr(language, TextKey::NewMacroButton),
             move |_, window, cx| {
@@ -144,32 +152,6 @@ fn macro_column(
                     .children(rows),
             )
         })
-        .when_some(delete_target, |column, target| {
-            column.child(icon_text_button(
-                t,
-                "delete-macro".to_owned(),
-                gpui_icons::LucideIcon::Trash2,
-                tr(language, TextKey::DeleteMacroButton),
-                move |_, window, cx| {
-                    window.blur(cx);
-                    let mut macros = del_runtime.config().macros;
-                    let Some(position) = macros.iter().position(|m| m.name == target) else {
-                        return;
-                    };
-                    macros.remove(position);
-                    let next = if macros.is_empty() {
-                        None
-                    } else {
-                        Some(macros[position.min(macros.len() - 1)].name.clone())
-                    };
-                    if commit_macros(&del_runtime, macros) {
-                        let mut shell = del_shared.borrow_mut();
-                        shell.page.selected_macro = next;
-                        reset_edit_state(&mut shell.page);
-                    }
-                },
-            ))
-        })
 }
 
 // ---------------------------------------------------------------------------
@@ -180,11 +162,12 @@ fn macro_column(
 fn editor_column(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     config: &Config,
     selected: Option<usize>,
+    cx: &mut App,
 ) -> AnyElement {
     let Some(index) = selected else {
         return controls::card(
@@ -202,9 +185,41 @@ fn editor_column(
     let Some(definition) = config.macros.get(index) else {
         return div().into_any_element();
     };
+
+    let del_shared = shared.clone();
+    let del_runtime = state.runtime.clone();
+    let target = definition.name.clone();
+
+    let delete = controls::danger_button(
+        "delete-macro",
+        gpui_icons::LucideIcon::Trash2,
+        tr(language, TextKey::DeleteMacroButton),
+        move |_, window, cx| {
+            window.blur(cx);
+            let mut macros = del_runtime.config().macros;
+            let Some(position) = macros.iter().position(|m| m.name == target) else {
+                return;
+            };
+            macros.remove(position);
+            let next = if macros.is_empty() {
+                None
+            } else {
+                Some(macros[position.min(macros.len() - 1)].name.clone())
+            };
+            if commit_macros(&del_runtime, macros) {
+                let mut shell = del_shared.borrow_mut();
+                shell.page.selected_macro = next;
+                reset_edit_state(&mut shell.page);
+            }
+        },
+    )
+    .into_any_element();
+
     controls::card(
         t,
-        editor(state, shared, window, t, language, config, definition),
+        editor(
+            state, shared, window, t, language, config, definition, delete, cx,
+        ),
     )
     .into_any_element()
 }
@@ -213,75 +228,21 @@ fn editor_column(
 fn editor(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
-    config: &Config,
+    _config: &Config,
     definition: &MacroDefinition,
-) -> impl IntoElement {
-    // Name row: buffer shows while the field is focused and armed for
-    // select-all-on-first-input; a pending invalid rename renders the same
-    // warning the old page showed when `update_config` rejected it.
-    let name_focused = state.page.focus_macro_name.is_focused(window);
-    let name_shown = if name_focused && !state.page.macro_name_fresh {
-        state.page.macro_name.as_str()
-    } else {
-        definition.name.as_str()
-    };
-    let name_warning = if name_focused && !state.page.macro_name_fresh {
-        let mut candidate = config.clone();
-        let pending = state.page.macro_name.clone();
-        if let Some(m) = candidate
-            .macros
-            .iter_mut()
-            .find(|m| m.name == definition.name)
-        {
-            m.name = pending;
-        }
-        candidate
-            .validate()
-            .err()
-            .map(|error| AppError::Config(error).to_string())
-    } else {
-        None
-    };
-
-    let name_shared = shared.clone();
-    let name_runtime = state.runtime.clone();
-    let rendered = definition.name.clone();
-    let name_field = controls::text_field(
-        controls::Field {
-            id: "macro-name",
-            text: name_shown.to_owned(),
-            placeholder: tr(language, TextKey::MacroNameLabel).to_owned(),
-            focus: state.page.focus_macro_name.clone(),
-            focused: name_focused,
-            width: Some(240.0),
-            tokens: t,
-        },
-        move |edit, _, _| {
-            let is_focus = matches!(edit, Edit::Focused);
-            let mut borrow = name_shared.borrow_mut();
-            let shell = &mut *borrow;
-            if is_focus {
-                shell.page.open_menu = None;
-            }
-            controls::apply_edit(
-                &mut shell.page.macro_name,
-                &mut shell.page.macro_name_fresh,
-                edit,
-            );
-            let buffer = shell.page.macro_name.clone();
-            let target = shell
-                .page
-                .selected_macro
-                .clone()
-                .unwrap_or_else(|| rendered.clone());
-            drop(borrow);
-            if !is_focus {
-                rename_macro(&name_runtime, &name_shared, &target, &buffer);
-            }
-        },
+    delete: AnyElement,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
+    let name_field = controls::field_input(
+        "macro-name",
+        tr(language, TextKey::MacroNameLabel),
+        definition.name.as_str(),
+        Some(240.0),
+        window,
+        cx,
     );
 
     let steps = &definition.steps;
@@ -299,6 +260,7 @@ fn editor(
                 index,
                 step,
                 steps.len(),
+                cx,
             )
         })
         .collect::<Vec<_>>();
@@ -314,9 +276,9 @@ fn editor(
             let button_shared = add_shared.clone();
             let button_runtime = add_runtime.clone();
             let rendered = add_rendered.clone();
-            icon_text_button(
-                t,
+            controls::icon_text_button(
                 format!("add-step-{index}"),
+                t,
                 kind.icon(),
                 kind.text(language),
                 move |_, _, _| {
@@ -344,26 +306,21 @@ fn editor(
         .flex_col()
         .gap_3()
         .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .child(
-                            div()
-                                .text_size(px(12.5))
-                                .text_color(t.muted)
-                                .child(tr(language, TextKey::MacroNameLabel)),
-                        )
-                        .child(name_field),
-                )
-                .when_some(name_warning, |block, message| {
-                    block.child(super::warning(&message))
-                }),
+            div().flex().flex_col().gap_2().child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(t.muted)
+                            .child(tr(language, TextKey::MacroNameLabel)),
+                    )
+                    .child(name_field)
+                    .child(div().flex_1().min_w(px(0.0)))
+                    .child(delete),
+            ),
         )
         .child(super::separator(t))
         .child(
@@ -425,14 +382,15 @@ fn editor(
 fn step_row(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     macro_name: &str,
     index: usize,
     step: &MacroStep,
     step_count: usize,
-) -> impl IntoElement {
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let kind = StepKind::of(step);
     let kind_open = state.page.open_menu.as_deref() == Some("step-kind")
         && state.page.selected_step == Some(index);
@@ -495,118 +453,41 @@ fn step_row(
     let mut editors: Vec<AnyElement> = Vec::new();
     match step {
         MacroStep::Tap { chord } | MacroStep::Press { chord } | MacroStep::Release { chord } => {
-            let key_options = KeyCode::ALL
-                .iter()
-                .map(|key| key.as_str().to_owned())
-                .collect::<Vec<_>>();
-            let key_selected = KeyCode::ALL
-                .iter()
-                .position(|key| *key == chord.key)
-                .unwrap_or(0);
-            let key_open = state.page.open_menu.as_deref() == Some("step-key")
-                && state.page.selected_step == Some(index);
-
+            let target = CaptureTarget::MacroStep {
+                name: macro_name.to_owned(),
+                index,
+            };
+            let (capturing, label) =
+                capture::chip(state, &target, *chord, tr(language, TextKey::PressKeyHint));
             let key_shared = shared.clone();
-            let key_button = controls::select_button(
-                "step-key",
-                t,
-                chord.key.as_str(),
-                key_open,
-                92.0,
-                move |_, window, cx| {
-                    window.blur(cx);
-                    let mut shell = key_shared.borrow_mut();
-                    shell.page.selected_step = Some(index);
-                    shell.page.open_menu = if shell.page.open_menu.as_deref() == Some("step-key") {
-                        None
-                    } else {
-                        Some("step-key".to_owned())
-                    };
-                },
-            );
-            let key_pick_shared = shared.clone();
-            let key_pick_runtime = state.runtime.clone();
-            let key_pick_rendered = macro_name.to_owned();
-            let key_menu = controls::select_menu(
-                "step-key",
-                t,
-                &key_options,
-                key_selected,
-                move |pick, _, _| {
-                    let picked = KeyCode::ALL[pick];
-                    let mut shell = key_pick_shared.borrow_mut();
-                    shell.page.open_menu = None;
-                    shell.page.selected_step = Some(index);
-                    let name = shell
-                        .page
-                        .selected_macro
-                        .clone()
-                        .unwrap_or_else(|| key_pick_rendered.clone());
-                    drop(shell);
-                    with_macro(&key_pick_runtime, &name, |m| {
-                        if let Some(chord) = m.steps.get_mut(index).and_then(chord_mut) {
-                            chord.key = picked;
-                            true
-                        } else {
-                            false
-                        }
-                    });
-                },
-            );
-            editors.push(
+            let confirm_shared = shared.clone();
+            let cancel_shared = shared.clone();
+            let mut key_row =
                 div()
-                    .relative()
-                    .child(key_button)
-                    .when(key_open, |d| d.child(key_menu))
-                    .into_any_element(),
-            );
-
-            for (mod_key, enabled) in [
-                (TextKey::ModifierControl, chord.modifiers.control),
-                (TextKey::ModifierAlt, chord.modifiers.alt),
-                (TextKey::ModifierShift, chord.modifiers.shift),
-                (TextKey::ModifierMeta, chord.modifiers.meta),
-            ] {
-                let id = format!("step-{index}-mod-{mod_key:?}");
-                let label = tr(language, mod_key);
-                let wanted = !enabled;
-                let mod_shared = shared.clone();
-                let mod_runtime = state.runtime.clone();
-                let mod_rendered = macro_name.to_owned();
-                editors.push(
-                    controls::toggle_labeled(id, t, label, enabled, move |_, _, _| {
-                        let name = {
-                            let shell = mod_shared.borrow();
-                            shell
-                                .page
-                                .selected_macro
-                                .clone()
-                                .unwrap_or_else(|| mod_rendered.clone())
-                        };
-                        with_macro(&mod_runtime, &name, |m| {
-                            if let Some(chord) = m.steps.get_mut(index).and_then(chord_mut) {
-                                match mod_key {
-                                    TextKey::ModifierControl => chord.modifiers.control = wanted,
-                                    TextKey::ModifierAlt => chord.modifiers.alt = wanted,
-                                    TextKey::ModifierShift => chord.modifiers.shift = wanted,
-                                    TextKey::ModifierMeta => chord.modifiers.meta = wanted,
-                                    _ => {}
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        });
-                    })
-                    .into_any_element(),
-                );
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(controls::key_capture_button(
+                        format!("step-{index}-key"),
+                        t,
+                        &label,
+                        capturing,
+                        move |_, window, cx| {
+                            capture::start(window, cx, &key_shared, target.clone());
+                        },
+                    ));
+            if capturing && state.capture_pending.is_some() {
+                key_row = key_row.child(controls::capture_buttons(
+                    &format!("step-{index}"),
+                    t,
+                    move |_, _, _| capture::confirm(&confirm_shared),
+                    move |_, _, _| capture::cancel(&cancel_shared),
+                ));
             }
+            editors.push(key_row.into_any_element());
         }
         MacroStep::Text { text } => {
-            editors.push(
-                text_editor(state, shared, window, t, language, macro_name, index, text)
-                    .into_any_element(),
-            );
+            editors.push(text_editor(window, language, index, text, cx));
         }
         MacroStep::Delay { ms } => {
             editors.push(
@@ -622,14 +503,12 @@ fn step_row(
                     )
                     .child(number_editor(
                         state,
-                        shared,
                         window,
-                        t,
                         macro_name,
                         index,
-                        (*ms).to_string(),
                         *ms as i64,
                         0..=60_000,
+                        cx,
                     ))
                     .into_any_element(),
             );
@@ -703,20 +582,15 @@ fn step_row(
                     .when(axis_open, |d| d.child(axis_menu))
                     .into_any_element(),
             );
-            editors.push(
-                number_editor(
-                    state,
-                    shared,
-                    window,
-                    t,
-                    macro_name,
-                    index,
-                    (*amount).to_string(),
-                    *amount as i64,
-                    -100..=100,
-                )
-                .into_any_element(),
-            );
+            editors.push(number_editor(
+                state,
+                window,
+                macro_name,
+                index,
+                *amount as i64,
+                -100..=100,
+                cx,
+            ));
         }
         MacroStep::MouseClick { button } => {
             let button_options = [MouseButton::Left, MouseButton::Right, MouseButton::Middle]
@@ -795,9 +669,9 @@ fn step_row(
     let up_shared = shared.clone();
     let up_runtime = state.runtime.clone();
     let up_rendered = macro_name.to_owned();
-    let up_button = icon_button(
-        t,
+    let up_button = controls::icon_button(
         format!("step-{index}-up"),
+        t,
         gpui_icons::LucideIcon::ArrowUp,
         tr(language, TextKey::MoveStepUpButton),
         move |_, _, _| {
@@ -832,9 +706,9 @@ fn step_row(
     let down_shared = shared.clone();
     let down_runtime = state.runtime.clone();
     let down_rendered = macro_name.to_owned();
-    let down_button = icon_button(
-        t,
+    let down_button = controls::icon_button(
         format!("step-{index}-down"),
+        t,
         gpui_icons::LucideIcon::ArrowDown,
         tr(language, TextKey::MoveStepDownButton),
         move |_, _, _| {
@@ -869,9 +743,9 @@ fn step_row(
     let remove_shared = shared.clone();
     let remove_runtime = state.runtime.clone();
     let remove_rendered = macro_name.to_owned();
-    let remove_button = icon_button(
-        t,
+    let remove_button = controls::icon_button(
         format!("step-{index}-remove"),
+        t,
         gpui_icons::LucideIcon::Trash2,
         tr(language, TextKey::RemoveStepButton),
         move |_, _, _| {
@@ -964,95 +838,28 @@ fn step_row(
 // Shared field editors (one focus handle per field kind across all rows).
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
 fn number_editor(
     state: &ShellState,
-    shared: &Shared,
-    window: &Window,
-    t: Tokens,
+    window: &mut Window,
     macro_name: &str,
     row: usize,
-    current: String,
     value: i64,
     range: std::ops::RangeInclusive<i64>,
-) -> impl IntoElement {
-    // The focus handle is shared by every numeric field, so the buffer is only
-    // shown for the row that owns it (`selected_step` is set on click).
-    let focused =
-        state.page.focus_step_value.is_focused(window) && state.page.selected_step == Some(row);
-    let shown = if focused && !state.page.step_value_fresh {
-        state.page.step_value.as_str()
-    } else {
-        current.as_str()
-    };
-    let field = controls::Field {
-        id: "step-value",
-        text: shown.to_owned(),
-        placeholder: current.clone(),
-        focus: state.page.focus_step_value.clone(),
-        focused,
-        width: Some(72.0),
-        tokens: t,
-    };
+    cx: &mut App,
+) -> AnyElement {
+    // Each step owns an input keyed by its row, so caret and commit need no
+    // shared-buffer bookkeeping anymore.
     let lo = *range.start();
     let hi = *range.end();
-    let rendered = macro_name.to_owned();
-    let edit_shared = shared.clone();
-    let edit_runtime = state.runtime.clone();
-    let delta_shared = shared.clone();
     let delta_runtime = state.runtime.clone();
-    let delta_rendered = rendered.clone();
+    let rendered = macro_name.to_owned();
 
     controls::number_field(
-        field,
-        move |edit, _, _| {
-            let is_focus = matches!(edit, Edit::Focused);
-            let mut borrow = edit_shared.borrow_mut();
-            let shell = &mut *borrow;
-            if is_focus {
-                shell.page.selected_step = Some(row);
-                shell.page.open_menu = None;
-            }
-            controls::apply_edit(
-                &mut shell.page.step_value,
-                &mut shell.page.step_value_fresh,
-                edit,
-            );
-            let buffer = shell.page.step_value.clone();
-            let target_step = shell.page.selected_step;
-            let target_macro = shell
-                .page
-                .selected_macro
-                .clone()
-                .unwrap_or_else(|| rendered.clone());
-            drop(borrow);
-            // Keystrokes may dispatch to any field sharing the focus handle, so
-            // the commit target comes from `selected_step`, set on click.
-            if !is_focus
-                && let Some(index) = target_step
-                && let Ok(parsed) = buffer.parse::<i64>()
-            {
-                with_macro(&edit_runtime, &target_macro, |m| {
-                    if let Some(step) = m.steps.get_mut(index) {
-                        set_numeric(step, parsed);
-                        true
-                    } else {
-                        false
-                    }
-                });
-            }
-        },
+        &format!("step-{row}-value"),
+        value.to_string(),
         move |delta, _, _| {
             let next = (value + delta).clamp(lo, hi);
-            let name = {
-                let shell = delta_shared.borrow();
-                shell
-                    .page
-                    .selected_macro
-                    .clone()
-                    .unwrap_or_else(|| delta_rendered.clone())
-            };
-            with_macro(&delta_runtime, &name, |m| {
+            with_macro(&delta_runtime, &rendered, |m| {
                 if let Some(step) = m.steps.get_mut(row) {
                     set_numeric(step, next);
                     true
@@ -1060,80 +867,27 @@ fn number_editor(
                     false
                 }
             });
-            let mut borrow = delta_shared.borrow_mut();
-            let shell = &mut *borrow;
-            shell.page.step_value = next.to_string();
-            shell.page.step_value_fresh = true;
         },
+        window,
+        cx,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn text_editor(
-    state: &ShellState,
-    shared: &Shared,
-    window: &Window,
-    t: Tokens,
+    window: &mut Window,
     language: Language,
-    macro_name: &str,
     row: usize,
     text: &str,
-) -> impl IntoElement {
-    // Shared focus handle: only the selected row shows the buffer.
-    let focused =
-        state.page.focus_macro_text.is_focused(window) && state.page.selected_step == Some(row);
-    let shown = if focused && !state.page.macro_text_fresh {
-        state.page.macro_text.as_str()
-    } else {
-        text
-    };
-    let field = controls::Field {
-        id: "macro-text",
-        text: shown.to_owned(),
-        placeholder: tr(language, TextKey::TextLabel).to_owned(),
-        focus: state.page.focus_macro_text.clone(),
-        focused,
-        width: None,
-        tokens: t,
-    };
-    let rendered = macro_name.to_owned();
-    let edit_shared = shared.clone();
-    let edit_runtime = state.runtime.clone();
-
-    controls::text_field(field, move |edit, _, _| {
-        let is_focus = matches!(edit, Edit::Focused);
-        let mut borrow = edit_shared.borrow_mut();
-        let shell = &mut *borrow;
-        if is_focus {
-            shell.page.selected_step = Some(row);
-            shell.page.open_menu = None;
-        }
-        controls::apply_edit(
-            &mut shell.page.macro_text,
-            &mut shell.page.macro_text_fresh,
-            edit,
-        );
-        let buffer = shell.page.macro_text.clone();
-        let target_step = shell.page.selected_step;
-        let target_macro = shell
-            .page
-            .selected_macro
-            .clone()
-            .unwrap_or_else(|| rendered.clone());
-        drop(borrow);
-        // Keystrokes may dispatch to any field sharing the focus handle, so the
-        // commit target comes from `selected_step`, set on click.
-        if !is_focus && let Some(index) = target_step {
-            with_macro(&edit_runtime, &target_macro, |m| {
-                if let Some(MacroStep::Text { text: slot }) = m.steps.get_mut(index) {
-                    *slot = buffer;
-                    true
-                } else {
-                    false
-                }
-            });
-        }
-    })
+    cx: &mut App,
+) -> AnyElement {
+    controls::field_input(
+        &format!("step-{row}-text"),
+        tr(language, TextKey::TextLabel),
+        text,
+        None,
+        window,
+        cx,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,7 +905,7 @@ fn reset_edit_state(page: &mut super::PageState) {
 
 /// Applies `mutate` to the named macro and commits; returns whether the
 /// configuration was written. Validation failures are reported.
-fn with_macro(
+pub(crate) fn with_macro(
     runtime: &RuntimeHandle,
     name: &str,
     mutate: impl FnOnce(&mut MacroDefinition) -> bool,
@@ -1166,6 +920,18 @@ fn with_macro(
     commit_macros(runtime, macros)
 }
 
+/// Stores a key captured in the settings window in one key step of a macro.
+pub(crate) fn capture_chord(runtime: &RuntimeHandle, name: &str, index: usize, captured: KeyChord) {
+    with_macro(runtime, name, |m| {
+        if let Some(chord) = m.steps.get_mut(index).and_then(chord_mut) {
+            *chord = captured;
+            true
+        } else {
+            false
+        }
+    });
+}
+
 /// Writes a full macro list back into the configuration.
 fn commit_macros(runtime: &RuntimeHandle, macros: Vec<MacroDefinition>) -> bool {
     match runtime.update_config(move |config| config.macros = macros) {
@@ -1178,7 +944,7 @@ fn commit_macros(runtime: &RuntimeHandle, macros: Vec<MacroDefinition>) -> bool 
 }
 
 /// Renames `old` to `new`, tracking the selection on success.
-fn rename_macro(runtime: &RuntimeHandle, shared: &Shared, old: &str, new: &str) {
+pub(crate) fn rename_macro(runtime: &RuntimeHandle, shared: &Shared, old: &str, new: &str) {
     if old == new {
         return;
     }
@@ -1196,7 +962,7 @@ fn rename_macro(runtime: &RuntimeHandle, shared: &Shared, old: &str, new: &str) 
 }
 
 /// Writes a numeric step value, clamped to the old DragValue ranges.
-fn set_numeric(step: &mut MacroStep, value: i64) {
+pub(crate) fn set_numeric(step: &mut MacroStep, value: i64) {
     match step {
         MacroStep::Delay { ms } => *ms = value.clamp(0, 60_000) as u64,
         MacroStep::Scroll { amount, .. } => *amount = value.clamp(-100, 100) as i32,
@@ -1264,56 +1030,6 @@ fn axis_label(language: Language, axis: ScrollAxis) -> &'static str {
         ScrollAxis::Vertical => tr(language, TextKey::AxisVertical),
         ScrollAxis::Horizontal => tr(language, TextKey::AxisHorizontal),
     }
-}
-
-fn icon_text_button(
-    t: Tokens,
-    id: String,
-    icon: gpui_icons::LucideIcon,
-    label: &str,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap_2()
-        .h(px(style::CONTROL_HEIGHT))
-        .px_3()
-        .rounded(px(style::RADIUS_CONTROL))
-        .border_1()
-        .border_color(t.border)
-        .text_size(px(13.5))
-        .text_color(t.text)
-        .cursor_pointer()
-        .hover(|this| this.bg(t.card_hover))
-        .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(t.muted))
-        .child(label.to_owned())
-        .on_click(on_click)
-}
-
-fn icon_button(
-    t: Tokens,
-    id: String,
-    icon: gpui_icons::LucideIcon,
-    tooltip: &str,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .justify_center()
-        .size(px(30.0))
-        .rounded(px(style::RADIUS_CONTROL))
-        .border_1()
-        .border_color(t.border)
-        .cursor_pointer()
-        .hover(|this| this.bg(t.card_hover))
-        .tooltip(controls::text_tooltip(tooltip.to_owned()))
-        .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(t.text))
-        .on_click(on_click)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

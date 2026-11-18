@@ -138,8 +138,8 @@ pub(crate) fn sector_icon(
     let mid = (start + end) / 2.0;
     let radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
     let center = point(
-        origin.x + px(radius * mid.cos()),
-        origin.y + px(radius * mid.sin()),
+        origin.x + px(geometry.center_x + radius * mid.cos()),
+        origin.y + px(geometry.center_y + radius * mid.sin()),
     );
     let size = ((geometry.outer_radius - geometry.inner_radius) * 0.45).clamp(20.0, 32.0);
     Some((center, size))
@@ -154,29 +154,6 @@ pub(crate) fn center_icon(geometry: &WheelGeometry, origin: Point<Pixels>) -> (P
     (center, geometry.inner_radius * 1.1)
 }
 
-/// Sector under a window position, or `None` (center or outside).
-pub(crate) fn sector_at(
-    geometry: &WheelGeometry,
-    count: usize,
-    origin: Point<Pixels>,
-    position: Point<Pixels>,
-) -> Option<usize> {
-    let x = f32::from(position.x - origin.x);
-    let y = f32::from(position.y - origin.y);
-    geometry.sector_at(count, x, y)
-}
-
-/// Whether a window position lies in the hub.
-pub(crate) fn is_center(
-    geometry: &WheelGeometry,
-    origin: Point<Pixels>,
-    position: Point<Pixels>,
-) -> bool {
-    let x = f32::from(position.x - origin.x);
-    let y = f32::from(position.y - origin.y);
-    geometry.is_center(x, y)
-}
-
 /// Icon and title elements for a painted wheel, in window coordinates.
 ///
 /// Hosts place these over the [`paint`] canvas; `title_y` is the baseline row
@@ -188,6 +165,7 @@ pub(crate) fn children(
     width: f32,
     sets: &[ActionSet],
     selected: usize,
+    show_title: bool,
 ) -> Vec<gpui::AnyElement> {
     let white = style::rgb(0xFFFFFF);
     let dim = style::rgba(0xFFFFFFDC);
@@ -217,19 +195,29 @@ pub(crate) fn children(
                 .child(iconset::element(set.icon, hub_size, white))
                 .into_any_element(),
         );
-        out.push(
-            div()
-                .absolute()
-                .left(px(0.0))
-                .top(px(title_y - 10.0))
-                .w(px(width))
-                .text_center()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_size(px(16.0))
-                .text_color(white)
-                .child(crate::ui::overlay::truncate(&set.name, 32))
-                .into_any_element(),
-        );
+        if show_title {
+            out.push(
+                div()
+                    .absolute()
+                    .left(px(0.0))
+                    .top(px(title_y - 14.0))
+                    .w(px(width))
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .px_3()
+                            .py(px(3.0))
+                            .rounded_full()
+                            .bg(style::rgba(0x0000008C))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_size(px(16.0))
+                            .text_color(white)
+                            .child(crate::ui::overlay::truncate(&set.name, 32)),
+                    )
+                    .into_any_element(),
+            );
+        }
     }
 
     out

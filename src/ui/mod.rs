@@ -5,10 +5,12 @@
 
 pub mod app;
 pub mod assets;
+pub mod capture;
 pub mod controls;
 pub mod gestures;
 pub mod icons;
 pub mod iconset;
+pub mod osd_window;
 pub mod overlay;
 pub mod overlay_window;
 pub mod pages;

@@ -6,19 +6,20 @@ use crate::core::{
     Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey,
     WheelGeometry, tr,
 };
-use crate::ui::controls::{self, Edit};
+use crate::ui::capture::{self, CaptureTarget};
+use crate::ui::controls;
 use crate::ui::iconset;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use crate::ui::wheel_paint;
 use gpui::prelude::*;
-use gpui::{AnyElement, App, ClickEvent, Context, Window, canvas, div, point, px};
+use gpui::{AnyElement, App, AsyncApp, Context, PathPromptOptions, Window, canvas, div, point, px};
 use std::path::PathBuf;
 
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     cx: &mut Context<SettingsView>,
 ) -> impl IntoElement {
     let t = style::tokens(state.preferences.theme_mode);
@@ -34,6 +35,8 @@ pub(crate) fn render(
         .and_then(|id| sets.iter().position(|set| set.id == id))
         .or(if sets.is_empty() { None } else { Some(0) });
 
+    let wide = window.viewport_size().width >= px(1100.0);
+
     div()
         .flex()
         .flex_col()
@@ -46,12 +49,23 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
-                .items_start()
-                .gap(px(20.0))
-                .child(set_column(state, shared, cx, t, language, &sets, selected))
-                .child(div().flex_1().min_w(px(0.0)).child(editor_column(
-                    state, shared, window, t, language, &config, &sets, &active, selected,
-                ))),
+                .when(wide, |node| node.flex_row().items_start().gap(px(20.0)))
+                .when(!wide, |node| node.flex_col().gap(px(14.0)))
+                .child(
+                    div()
+                        .when(wide, |node| node.flex_1().min_w(px(380.0)).max_w(px(640.0)))
+                        .when(!wide, |node| node.w_full())
+                        .child(set_column(state, shared, t, language, &sets, selected)),
+                )
+                .child(
+                    div()
+                        .when(wide, |node| node.flex_1().min_w(px(420.0)))
+                        .when(!wide, |node| node.w_full())
+                        .child(editor_column(
+                            state, shared, window, t, language, &config, &sets, &active, selected,
+                            &mut *cx,
+                        )),
+                ),
         )
 }
 
@@ -62,7 +76,6 @@ pub(crate) fn render(
 fn set_column(
     state: &ShellState,
     shared: &Shared,
-    cx: &mut Context<SettingsView>,
     t: Tokens,
     language: Language,
     sets: &[ActionSet],
@@ -103,6 +116,9 @@ fn set_column(
                     div()
                         .flex_1()
                         .min_w(px(0.0))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
                         .text_size(px(13.0))
                         .text_color(if is_selected { t.text } else { t.muted })
                         .child(set.name.clone()),
@@ -119,9 +135,6 @@ fn set_column(
         })
         .collect::<Vec<_>>();
 
-    let can_move_left = selected.is_some_and(|index| index > 0);
-    let can_move_right = selected.is_some_and(|index| index + 1 < sets.len());
-
     let add_shared = shared.clone();
     let add_runtime = state.runtime.clone();
     let left_shared = shared.clone();
@@ -129,15 +142,14 @@ fn set_column(
     let right_shared = shared.clone();
     let right_runtime = state.runtime.clone();
 
-    let preview = preview_box(state, shared, cx, sets, selected);
+    let preview = preview_box(sets, selected);
 
     div()
-        .flex_none()
-        .w(px(320.0))
+        .w_full()
         .flex()
         .flex_col()
         .gap_3()
-        .child(preview)
+        .child(div().w_full().flex().justify_center().child(preview))
         .child(
             div()
                 .rounded(px(style::RADIUS_CARD))
@@ -163,11 +175,11 @@ fn set_column(
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(icon_text_button(
-                    t,
+                .child(controls::icon_text_button(
                     "add-set",
+                    t,
                     gpui_icons::LucideIcon::Plus,
-                    &format!("  {}", tr(language, TextKey::AddSetButton)),
+                    tr(language, TextKey::AddSetButton),
                     move |_, _, _| {
                         let mut sets = add_runtime.config().action_sets.clone();
                         let set_language = add_runtime.config().language;
@@ -178,10 +190,10 @@ fn set_column(
                         add_shared.borrow_mut().page.selected_set = Some(id);
                     },
                 ))
-                .when(can_move_left, |div| {
-                    div.child(icon_button(
-                        t,
+                .when(selected.is_some(), |div| {
+                    div.child(controls::icon_button(
                         "move-set-left",
+                        t,
                         gpui_icons::LucideIcon::ChevronLeft,
                         tr(language, TextKey::MoveSetLeft),
                         move |_, _, _| {
@@ -195,10 +207,10 @@ fn set_column(
                         },
                     ))
                 })
-                .when(can_move_right, |div| {
-                    div.child(icon_button(
-                        t,
+                .when(selected.is_some(), |div| {
+                    div.child(controls::icon_button(
                         "move-set-right",
+                        t,
                         gpui_icons::LucideIcon::ChevronRight,
                         tr(language, TextKey::MoveSetRight),
                         move |_, _, _| {
@@ -223,14 +235,15 @@ fn set_column(
 fn editor_column(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     config: &Config,
     sets: &[ActionSet],
     active: &Option<String>,
     selected: Option<usize>,
-) -> impl IntoElement {
+    cx: &mut App,
+) -> AnyElement {
     if sets.is_empty() {
         return controls::card(
             t,
@@ -254,6 +267,37 @@ fn editor_column(
     let delete_runtime = state.runtime.clone();
     let delete_id = set.id.clone();
 
+    let delete = controls::danger_button(
+        "delete-set",
+        gpui_icons::LucideIcon::Trash,
+        tr(language, TextKey::DeleteSetButton),
+        move |_, _, _| {
+            let mut sets = delete_runtime.config().action_sets.clone();
+            let mut active = delete_runtime.config().active_set.clone();
+            let Some(position) = sets.iter().position(|set| set.id == delete_id) else {
+                return;
+            };
+            let removed = sets.remove(position);
+            if active.as_deref() == Some(removed.id.as_str()) {
+                active = sets.first().map(|set| set.id.clone());
+            }
+            let next = if sets.is_empty() {
+                None
+            } else {
+                Some(position.min(sets.len() - 1))
+            };
+            commit_sets(&delete_runtime, sets, active);
+            delete_shared.borrow_mut().page.selected_set = next.and_then(|index| {
+                delete_runtime
+                    .config()
+                    .action_sets
+                    .get(index)
+                    .map(|set| set.id.clone())
+            });
+        },
+    )
+    .into_any_element();
+
     div()
         .flex()
         .flex_col()
@@ -261,39 +305,8 @@ fn editor_column(
         .child(controls::card(
             t,
             editor(
-                state, shared, window, t, language, config, set, is_active, brightness,
+                state, shared, window, t, language, config, set, is_active, brightness, delete, cx,
             ),
-        ))
-        .child(super::separator(t))
-        .child(icon_text_button(
-            t,
-            "delete-set",
-            gpui_icons::LucideIcon::Trash,
-            &format!("  {}", tr(language, TextKey::DeleteSetButton)),
-            move |_, _, _| {
-                let mut sets = delete_runtime.config().action_sets.clone();
-                let mut active = delete_runtime.config().active_set.clone();
-                let Some(position) = sets.iter().position(|set| set.id == delete_id) else {
-                    return;
-                };
-                let removed = sets.remove(position);
-                if active.as_deref() == Some(removed.id.as_str()) {
-                    active = sets.first().map(|set| set.id.clone());
-                }
-                let next = if sets.is_empty() {
-                    None
-                } else {
-                    Some(position.min(sets.len() - 1))
-                };
-                commit_sets(&delete_runtime, sets, active);
-                delete_shared.borrow_mut().page.selected_set = next.and_then(|index| {
-                    delete_runtime
-                        .config()
-                        .action_sets
-                        .get(index)
-                        .map(|set| set.id.clone())
-                });
-            },
         ))
         .into_any_element()
 }
@@ -302,93 +315,71 @@ fn editor_column(
 fn editor(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     config: &Config,
     set: &ActionSet,
     is_active: bool,
     brightness_supported: bool,
-) -> impl IntoElement {
+    delete: AnyElement,
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let set_id = set.id.clone();
 
     // Name row.
-    let name_focused = state.page.focus_set_name.is_focused(window);
-    let name_shown = if name_focused && !state.page.set_name_fresh {
-        state.page.set_name.as_str()
-    } else {
-        set.name.as_str()
-    };
-    let name_buffer = shared.clone();
-    let name_runtime = state.runtime.clone();
-    let name_id = set_id.clone();
-    let name_field = controls::text_field(
-        controls::Field {
-            id: "set-name",
-            text: name_shown.to_owned(),
-            placeholder: tr(language, TextKey::SetNameLabel).to_owned(),
-            focus: state.page.focus_set_name.clone(),
-            focused: name_focused,
-            width: Some(220.0),
-            tokens: t,
-        },
-        move |edit, _, _| {
-            let commit = !matches!(edit, Edit::Focused);
-            let mut borrow = name_buffer.borrow_mut();
-            let shell = &mut *borrow;
-            controls::apply_edit(
-                &mut shell.page.set_name,
-                &mut shell.page.set_name_fresh,
-                edit,
-            );
-            let name = shell.page.set_name.clone();
-            drop(borrow);
-            if commit {
-                with_set(&name_runtime, &name_id, move |set| set.name = name);
-            }
-        },
+    let name_field = controls::field_input(
+        "set-name",
+        tr(language, TextKey::SetNameLabel),
+        set.name.as_str(),
+        Some(220.0),
+        window,
+        cx,
     );
 
     // Icon picker.
-    let icon_rows = SetIcon::ALL
-        .chunks(10)
-        .map(|row| {
-            div().flex().gap_1().children(row.iter().map(|icon| {
-                let is_selected = set.icon == *icon;
-                let icon_shared = shared.clone();
-                let icon_runtime = state.runtime.clone();
-                let icon_id = set_id.clone();
-                let icon = *icon;
-                div()
-                    .id(format!("set-icon-{}", iconset::name(icon)))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(34.0))
-                    .rounded(px(7.0))
-                    .when(is_selected, |div| {
-                        div.bg(t.accent_soft).border_1().border_color(style::ACCENT)
-                    })
-                    .hover(move |div| {
-                        if is_selected {
-                            div
-                        } else {
-                            div.bg(t.card_hover)
-                        }
-                    })
-                    .cursor_pointer()
-                    .child(iconset::element(
-                        icon,
-                        22.0,
-                        if is_selected { style::ACCENT } else { t.text },
-                    ))
-                    .on_click(move |_, _, _| {
-                        let _ = &icon_shared;
-                        with_set(&icon_runtime, &icon_id, move |set| set.icon = icon);
-                    })
-            }))
+    let icon_cells = SetIcon::ALL
+        .iter()
+        .map(|icon| {
+            let is_selected = set.icon == *icon;
+            let icon_runtime = state.runtime.clone();
+            let icon_id = set_id.clone();
+            let icon = *icon;
+            div()
+                .id(format!("set-icon-{}", iconset::name(icon)))
+                .flex()
+                .items_center()
+                .justify_center()
+                .w_full()
+                .h(px(40.0))
+                .rounded(px(7.0))
+                .border_1()
+                .border_color(if is_selected { style::ACCENT } else { t.card })
+                .when(is_selected, |div| div.bg(t.accent_soft))
+                .hover(move |div| {
+                    if is_selected {
+                        div
+                    } else {
+                        div.bg(t.card_hover)
+                    }
+                })
+                .cursor_pointer()
+                .child(iconset::element(
+                    icon,
+                    22.0,
+                    if is_selected { style::ACCENT } else { t.text },
+                ))
+                .on_click(move |_, _, _| {
+                    with_set(&icon_runtime, &icon_id, move |set| set.icon = icon);
+                })
         })
         .collect::<Vec<_>>();
+    let icon_grid = div()
+        .w_full()
+        .grid()
+        .grid_cols(10)
+        .gap_1()
+        .children(icon_cells);
 
     let controls_column = [Control::Left, Control::Press, Control::Right]
         .iter()
@@ -403,6 +394,7 @@ fn editor(
                 set,
                 *control,
                 brightness_supported,
+                cx,
             )
             .into_any_element()
         })
@@ -429,7 +421,9 @@ fn editor(
                         tr(language, TextKey::ActiveSetLabel),
                         style::SUCCESS,
                     ))
-                }),
+                })
+                .child(div().flex_1().min_w(px(0.0)))
+                .child(delete),
         )
         .child(
             div()
@@ -442,7 +436,7 @@ fn editor(
                         .text_color(t.muted)
                         .child(tr(language, TextKey::SetIconLabel)),
                 )
-                .children(icon_rows),
+                .child(icon_grid),
         )
         .children(controls_column)
 }
@@ -455,14 +449,15 @@ fn editor(
 fn show_control(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     config: &Config,
     set: &ActionSet,
     control: Control,
     brightness_supported: bool,
-) -> impl IntoElement {
+    cx: &mut App,
+) -> impl IntoElement + use<> {
     let ids = MenuIds::of(control);
     let kind = Kind::of(set.actions.for_control(control));
     let choices = Kind::choices(brightness_supported);
@@ -506,7 +501,7 @@ fn show_control(
                             t,
                             kind.label(language),
                             open,
-                            170.0,
+                            200.0,
                             move |_, _, _| {
                                 let mut shell = kind_shared.borrow_mut();
                                 shell.page.open_menu =
@@ -547,7 +542,7 @@ fn show_control(
                 .items_center()
                 .gap_3()
                 .children(parameters(
-                    state, shared, window, t, language, config, set, control, ids,
+                    state, shared, window, t, language, config, set, control, ids, cx,
                 )),
         )
 }
@@ -556,13 +551,14 @@ fn show_control(
 fn parameters(
     state: &ShellState,
     shared: &Shared,
-    window: &Window,
+    window: &mut Window,
     t: Tokens,
     language: Language,
     config: &Config,
     set: &ActionSet,
     control: Control,
     ids: MenuIds,
+    cx: &mut App,
 ) -> Vec<AnyElement> {
     let action = set.actions.for_control(control).clone();
     let mut out: Vec<AnyElement> = Vec::new();
@@ -622,15 +618,13 @@ fn parameters(
             out.push(
                 number_editor(
                     state,
-                    shared,
                     window,
-                    t,
                     ids.steps,
-                    steps.to_string(),
                     i64::from(steps),
                     1..=10,
                     set.id.clone(),
                     control,
+                    cx,
                 )
                 .into_any_element(),
             );
@@ -677,15 +671,13 @@ fn parameters(
             out.push(
                 number_editor(
                     state,
-                    shared,
                     window,
-                    t,
                     ids.amount,
-                    amount.to_string(),
                     i64::from(amount),
                     -100..=100,
                     set.id.clone(),
                     control,
+                    cx,
                 )
                 .into_any_element(),
             );
@@ -825,45 +817,52 @@ fn parameters(
         }
         Action::Launch { path } => {
             out.push(muted(t, tr(language, TextKey::ActionPath)).into_any_element());
-            let focused = state.page.focus_path.is_focused(window);
-            let current = path.to_string_lossy().into_owned();
-            let shown = if focused && !state.page.path_buffer_fresh {
-                state.page.path_buffer.as_str()
-            } else {
-                current.as_str()
-            };
-            let path_shared = shared.clone();
-            let path_runtime = state.runtime.clone();
-            let path_id = set.id.clone();
             out.push(
-                controls::text_field(
-                    controls::Field {
-                        id: ids.path,
-                        text: shown.to_owned(),
-                        placeholder: "…".to_owned(),
-                        focus: state.page.focus_path.clone(),
-                        focused,
-                        width: Some(320.0),
-                        tokens: t,
-                    },
-                    move |edit, _, _| {
-                        let commit = !matches!(edit, Edit::Focused);
-                        let mut borrow = path_shared.borrow_mut();
-                        let shell = &mut *borrow;
-                        controls::apply_edit(
-                            &mut shell.page.path_buffer,
-                            &mut shell.page.path_buffer_fresh,
-                            edit,
-                        );
-                        let buffer = shell.page.path_buffer.clone();
-                        drop(borrow);
-                        if commit {
-                            with_set_action(&path_runtime, &path_id, control, |action, _| {
-                                if let Action::Launch { path: slot } = action {
-                                    *slot = PathBuf::from(&buffer);
-                                }
-                            });
-                        }
+                controls::field_input(
+                    ids.path,
+                    "…",
+                    path.to_string_lossy().as_ref(),
+                    Some(320.0),
+                    window,
+                    cx,
+                )
+                .into_any_element(),
+            );
+
+            let browse_runtime = state.runtime.clone();
+            let browse_id = set.id.clone();
+            out.push(
+                controls::secondary_button(
+                    t,
+                    tr(language, TextKey::BrowseButton),
+                    move |_, _, cx| {
+                        let receiver = cx.prompt_for_paths(PathPromptOptions {
+                            files: true,
+                            directories: false,
+                            multiple: false,
+                            prompt: None,
+                        });
+                        let runtime = browse_runtime.clone();
+                        let set_id = browse_id.clone();
+                        cx.spawn(async move |cx: &mut AsyncApp| {
+                            if let Ok(Ok(Some(paths))) = receiver.await
+                                && let Some(path) = paths.into_iter().next()
+                            {
+                                cx.update(|_| {
+                                    with_set_action(
+                                        &runtime,
+                                        &set_id,
+                                        control,
+                                        move |action, _| {
+                                            if let Action::Launch { path: slot } = action {
+                                                *slot = path;
+                                            }
+                                        },
+                                    );
+                                });
+                            }
+                        })
+                        .detach();
                     },
                 )
                 .into_any_element(),
@@ -931,73 +930,33 @@ fn enum_select(
 #[allow(clippy::too_many_arguments)]
 fn number_editor(
     state: &ShellState,
-    shared: &Shared,
-    window: &Window,
-    t: Tokens,
+    window: &mut Window,
     id: &'static str,
-    current: String,
     value: i64,
     range: std::ops::RangeInclusive<i64>,
     set_id: String,
     control: Control,
-) -> impl IntoElement {
-    let focused = state.page.focus_step_value.is_focused(window);
-    let shown = if focused && !state.page.step_value_fresh {
-        state.page.step_value.as_str()
-    } else {
-        current.as_str()
-    };
-    let field = controls::Field {
-        id,
-        text: shown.to_owned(),
-        placeholder: current.clone(),
-        focus: state.page.focus_step_value.clone(),
-        focused,
-        width: Some(72.0),
-        tokens: t,
-    };
-    let edit_shared = shared.clone();
-    let edit_runtime = state.runtime.clone();
-    let edit_set_id = set_id.clone();
-    let delta_shared = shared.clone();
+    cx: &mut App,
+) -> AnyElement {
     let delta_runtime = state.runtime.clone();
-    let delta_set_id = set_id;
     let lo = *range.start();
     let hi = *range.end();
 
     controls::number_field(
-        field,
-        move |edit, _, _| {
-            let is_focused_edit = matches!(edit, Edit::Focused);
-            let mut borrow = edit_shared.borrow_mut();
-            let shell = &mut *borrow;
-            controls::apply_edit(
-                &mut shell.page.step_value,
-                &mut shell.page.step_value_fresh,
-                edit,
-            );
-            let buffer = shell.page.step_value.clone();
-            drop(borrow);
-            if !is_focused_edit && let Ok(parsed) = buffer.parse::<i64>() {
-                let clamped = parsed.clamp(lo, hi);
-                with_set_action(&edit_runtime, &edit_set_id, control, move |action, _| {
-                    set_numeric(action, clamped);
-                });
-            }
-        },
+        id,
+        value.to_string(),
         move |delta, _, _| {
             let next = (value + delta).clamp(lo, hi);
-            with_set_action(&delta_runtime, &delta_set_id, control, move |action, _| {
+            with_set_action(&delta_runtime, &set_id, control, move |action, _| {
                 set_numeric(action, next);
             });
-            let mut shell = delta_shared.borrow_mut();
-            shell.page.step_value = next.to_string();
-            shell.page.step_value_fresh = true;
         },
+        window,
+        cx,
     )
 }
 
-fn set_numeric(action: &mut Action, value: i64) {
+pub(crate) fn set_numeric(action: &mut Action, value: i64) {
     match action {
         Action::Volume { steps, .. } | Action::Brightness { steps, .. } => {
             *steps = value.clamp(1, u8::MAX as i64) as u8;
@@ -1021,150 +980,38 @@ fn chord_picker(
     chord: KeyChord,
 ) -> impl IntoElement {
     let ids = *ids;
-    let key_options = KeyCode::ALL
-        .iter()
-        .map(|key| key.as_str().to_owned())
-        .collect::<Vec<_>>();
-    let key_selected = KeyCode::ALL
-        .iter()
-        .position(|key| *key == chord.key)
-        .unwrap_or(0);
-    let open = state.page.open_menu.as_deref() == Some(ids.chord_key);
+    let target = CaptureTarget::Shortcut {
+        set_id: set_id.clone(),
+        control,
+    };
+    let (capturing, label) =
+        capture::chip(state, &target, chord, tr(language, TextKey::PressKeyHint));
 
     let key_shared = shared.clone();
-    let key_runtime = state.runtime.clone();
-    let key_id = set_id.clone();
-    let pick_shared = shared.clone();
-
-    let key_row = div()
-        .relative()
-        .child(controls::select_button(
-            ids.chord_key,
-            t,
-            chord.key.as_str(),
-            open,
-            92.0,
-            move |_, _, _| {
-                let mut shell = key_shared.borrow_mut();
-                shell.page.open_menu = if shell.page.open_menu.as_deref() == Some(ids.chord_key) {
-                    None
-                } else {
-                    Some(ids.chord_key.to_owned())
-                };
-            },
-        ))
-        .when(open, |div| {
-            div.child(controls::select_menu(
-                format!("{}-menu", ids.chord_key),
-                t,
-                &key_options,
-                key_selected,
-                move |index, _, _| {
-                    let picked = KeyCode::ALL[index];
-                    with_set_action(&key_runtime, &key_id, control, move |action, _| {
-                        if let Action::Shortcut { chord } = action {
-                            chord.key = picked;
-                        }
-                    });
-                    pick_shared.borrow_mut().page.open_menu = None;
-                },
-            ))
-        });
-
-    let mut modifiers = div().flex().items_center().gap_2();
-    for (key, enabled) in [
-        (TextKey::ModifierControl, chord.modifiers.control),
-        (TextKey::ModifierAlt, chord.modifiers.alt),
-        (TextKey::ModifierShift, chord.modifiers.shift),
-        (TextKey::ModifierMeta, chord.modifiers.meta),
-    ] {
-        let modifier_shared = shared.clone();
-        let modifier_runtime = state.runtime.clone();
-        let modifier_id = set_id.clone();
-        let wanted = !enabled;
-        modifiers = modifiers.child(controls::toggle_labeled(
-            format!("{}-mod-{key:?}", ids.chord_key),
-            t,
-            tr(language, key),
-            enabled,
-            move |_, _, _| {
-                let _ = &modifier_shared;
-                with_set_action(
-                    &modifier_runtime,
-                    &modifier_id,
-                    control,
-                    move |action, _| {
-                        if let Action::Shortcut { chord } = action {
-                            match key {
-                                TextKey::ModifierControl => chord.modifiers.control = wanted,
-                                TextKey::ModifierAlt => chord.modifiers.alt = wanted,
-                                TextKey::ModifierShift => chord.modifiers.shift = wanted,
-                                TextKey::ModifierMeta => chord.modifiers.meta = wanted,
-                                _ => {}
-                            }
-                        }
-                    },
-                );
-            },
-        ));
-    }
+    let confirm_shared = shared.clone();
+    let cancel_shared = shared.clone();
 
     div()
         .flex()
         .items_center()
         .gap_3()
-        .child(key_row)
-        .child(modifiers)
-}
-
-fn icon_text_button(
-    t: Tokens,
-    id: &'static str,
-    icon: gpui_icons::LucideIcon,
-    label: &str,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap_1()
-        .h(px(style::CONTROL_HEIGHT))
-        .px_3()
-        .rounded(px(style::RADIUS_CONTROL))
-        .border_1()
-        .border_color(t.border)
-        .text_size(px(13.5))
-        .text_color(t.text)
-        .cursor_pointer()
-        .hover(|this| this.bg(t.card_hover))
-        .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(t.muted))
-        .child(label.to_owned())
-        .on_click(on_click)
-}
-
-fn icon_button(
-    t: Tokens,
-    id: &'static str,
-    icon: gpui_icons::LucideIcon,
-    tooltip: &str,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .justify_center()
-        .size(px(30.0))
-        .rounded(px(style::RADIUS_CONTROL))
-        .border_1()
-        .border_color(t.border)
-        .cursor_pointer()
-        .hover(|this| this.bg(t.card_hover))
-        .tooltip(controls::text_tooltip(tooltip.to_owned()))
-        .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(t.text))
-        .on_click(on_click)
+        .child(controls::key_capture_button(
+            ids.chord_key.to_owned(),
+            t,
+            &label,
+            capturing,
+            move |_, window, cx| {
+                capture::start(window, cx, &key_shared, target.clone());
+            },
+        ))
+        .when(capturing && state.capture_pending.is_some(), |row| {
+            row.child(controls::capture_buttons(
+                ids.chord_key,
+                t,
+                move |_, _, _| capture::confirm(&confirm_shared),
+                move |_, _, _| capture::cancel(&cancel_shared),
+            ))
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -1243,7 +1090,7 @@ fn commit_sets(runtime: &RuntimeHandle, sets: Vec<ActionSet>, active: Option<Str
 }
 
 /// Clones the sets, applies `mutate` to the set with `set_id`, commits.
-fn with_set(runtime: &RuntimeHandle, set_id: &str, mutate: impl FnOnce(&mut ActionSet)) {
+pub(crate) fn with_set(runtime: &RuntimeHandle, set_id: &str, mutate: impl FnOnce(&mut ActionSet)) {
     let mut sets = runtime.config().action_sets.clone();
     let active = runtime.config().active_set.clone();
     if let Some(set) = sets.iter_mut().find(|set| set.id == set_id) {
@@ -1253,7 +1100,7 @@ fn with_set(runtime: &RuntimeHandle, set_id: &str, mutate: impl FnOnce(&mut Acti
 }
 
 /// Clones the sets, applies `mutate` to one control's action, commits.
-fn with_set_action(
+pub(crate) fn with_set_action(
     runtime: &RuntimeHandle,
     set_id: &str,
     control: Control,
@@ -1269,19 +1116,33 @@ fn with_set_action(
     commit_sets(runtime, sets, active);
 }
 
-/// Swaps the selected set with its neighbour; returns the new index.
+/// Stores a key captured in the settings window as the shortcut of a control.
+pub(crate) fn capture_chord(
+    runtime: &RuntimeHandle,
+    set_id: &str,
+    control: Control,
+    captured: KeyChord,
+) {
+    with_set_action(runtime, set_id, control, move |action, _| {
+        if let Action::Shortcut { chord } = action {
+            *chord = captured;
+        }
+    });
+}
+
+/// Moves the selected set by one place, wrapping around both ends; returns
+/// its new index.
 fn move_sets(runtime: &RuntimeHandle, shared: &Shared, delta: i64) -> Option<usize> {
     let selected = shared.borrow().page.selected_set.clone()?;
     let mut sets = runtime.config().action_sets.clone();
     let active = runtime.config().active_set.clone();
     let index = sets.iter().position(|set| set.id == selected)?;
-    let target = index as i64 + delta;
-    if target < 0 || target as usize >= sets.len() {
-        return None;
-    }
-    sets.swap(index, target as usize);
+    let len = sets.len() as i64;
+    let target = (index as i64 + delta).rem_euclid(len) as usize;
+    let set = sets.remove(index);
+    sets.insert(target, set);
     commit_sets(runtime, sets, active);
-    Some(target as usize)
+    Some(target)
 }
 
 fn new_set(sets: &[ActionSet], language: Language) -> ActionSet {
@@ -1434,26 +1295,14 @@ fn media_label(language: Language, command: MediaCommand) -> &'static str {
 
 /// Clickable wheel preview above the set list (ported from the eframe page;
 /// geometry uses the full box like the old preview did).
-fn preview_box(
-    state: &ShellState,
-    shared: &Shared,
-    cx: &mut Context<SettingsView>,
-    sets: &[ActionSet],
-    selected: Option<usize>,
-) -> impl IntoElement {
+fn preview_box(sets: &[ActionSet], selected: Option<usize>) -> impl IntoElement {
     const BOX: f32 = 300.0;
     let geometry = WheelGeometry::from_size(BOX);
     let center = point(px(BOX / 2.0), px(BOX / 2.0));
     let origin = wheel_paint::origin(center, &geometry);
     let selected_index = selected.unwrap_or(0);
-    let hovered = state.page.preview_hovered;
-    let title_y = BOX - 8.0;
     let paint_sets = sets.to_vec();
-
-    let move_shared = shared.clone();
-    let move_weak = cx.weak_entity();
-    let down_shared = shared.clone();
-    let down_weak = cx.weak_entity();
+    let title_y = BOX - 8.0;
 
     div()
         .id("set-preview")
@@ -1468,13 +1317,15 @@ fn preview_box(
                         bounds.origin.x + px(BOX / 2.0),
                         bounds.origin.y + px(BOX / 2.0),
                     );
+                    // The preview mirrors the wheel without the mouse: no
+                    // hover highlight, no click selection.
                     wheel_paint::paint(
                         window,
                         &geometry,
                         paint_center,
                         &paint_sets,
                         selected_index,
-                        hovered,
+                        None,
                     );
                 },
             )
@@ -1488,38 +1339,8 @@ fn preview_box(
             BOX,
             sets,
             selected_index,
+            false,
         ))
-        .on_mouse_move(move |event, _, cx| {
-            let count = move_shared.borrow().runtime.config().action_sets.len();
-            let hovered = wheel_paint::sector_at(&geometry, count, origin, event.position);
-            let mut state = move_shared.borrow_mut();
-            if state.page.preview_hovered != hovered {
-                state.page.preview_hovered = hovered;
-                if let Some(view) = move_weak.upgrade() {
-                    view.update(cx, |_, cx| cx.notify());
-                }
-            }
-        })
-        .on_mouse_down(gpui::MouseButton::Left, move |event, _, cx| {
-            let count = down_shared.borrow().runtime.config().action_sets.len();
-            let hit = wheel_paint::sector_at(&geometry, count, origin, event.position);
-            let Some(index) = hit else {
-                return;
-            };
-            let id = down_shared
-                .borrow()
-                .runtime
-                .config()
-                .action_sets
-                .get(index)
-                .map(|set| set.id.clone());
-            if let Some(id) = id {
-                down_shared.borrow_mut().page.selected_set = Some(id);
-                if let Some(view) = down_weak.upgrade() {
-                    view.update(cx, |_, cx| cx.notify());
-                }
-            }
-        })
 }
 
 #[cfg(test)]
