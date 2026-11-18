@@ -6,6 +6,7 @@
 //! replacements all land.
 
 mod about;
+mod actions;
 mod devices;
 mod general;
 mod macros;
@@ -52,6 +53,12 @@ pub struct PageState {
     pub selected_macro: Option<String>,
     /// Currently edited macro step (by index).
     pub selected_step: Option<usize>,
+    /// Focus handle for the launch-path field (actions page).
+    pub focus_path: FocusHandle,
+    /// Buffer for the launch-path field.
+    pub path_buffer: String,
+    /// Select-all-on-first-input flag for the launch-path field.
+    pub path_buffer_fresh: bool,
 }
 
 impl PageState {
@@ -73,6 +80,9 @@ impl PageState {
             selected_set: None,
             selected_macro: None,
             selected_step: None,
+            focus_path: cx.focus_handle(),
+            path_buffer: String::new(),
+            path_buffer_fresh: true,
         }
     }
 }
@@ -90,8 +100,7 @@ pub fn render(
         SettingsTab::About => about::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Devices => devices::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Macros => macros::render(state, shared, window, cx).into_any_element(),
-        // Ported next; blank until then (no placeholder prose in the UI).
-        SettingsTab::Actions => div().into_any_element(),
+        SettingsTab::Actions => actions::render(state, shared, window, cx).into_any_element(),
     }
 }
 

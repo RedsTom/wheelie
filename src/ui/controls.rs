@@ -311,7 +311,7 @@ pub fn setting_row(
 
 /// Toggle switch.
 pub fn toggle(
-    id: &'static str,
+    id: impl Into<gpui::ElementId>,
     checked: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
@@ -352,7 +352,7 @@ pub fn toggle(
 
 /// Toggle switch with a label to its left, as a full row control.
 pub fn toggle_labeled(
-    id: &'static str,
+    id: impl Into<gpui::ElementId>,
     t: Tokens,
     label: &str,
     checked: bool,
@@ -441,21 +441,23 @@ pub fn select_button(
 /// Wrap button and menu in a `relative()` container; keep the menu after the
 /// button so it paints on top.
 pub fn select_menu(
-    id: &'static str,
+    id: impl AsRef<str>,
     t: Tokens,
     options: &[String],
     selected: usize,
     on_pick: impl Fn(usize, &mut Window, &mut App) + Clone + 'static,
 ) -> impl IntoElement {
+    let id = id.as_ref().to_owned();
+    let items_id = id.clone();
     let items = options
         .iter()
         .enumerate()
-        .map(|(index, label)| {
+        .map(move |(index, label)| {
             let on_pick = on_pick.clone();
             let is_selected = index == selected;
             let label = label.clone();
             div()
-                .id((id, index))
+                .id(format!("{items_id}-{index}"))
                 .flex()
                 .items_center()
                 .justify_between()
@@ -508,15 +510,15 @@ pub fn select_menu(
 }
 
 /// Parameters for one text field render.
-pub struct Field<'a> {
+pub struct Field {
     /// Stable element id.
     pub id: &'static str,
     /// Current buffer contents.
-    pub text: &'a str,
+    pub text: String,
     /// Placeholder shown while the buffer is empty.
-    pub placeholder: &'a str,
-    /// Focus handle owned by the page state.
-    pub focus: &'a FocusHandle,
+    pub placeholder: String,
+    /// Focus handle owned by the page state (cloned into the element).
+    pub focus: FocusHandle,
     /// Whether the field currently holds focus (from the window).
     pub focused: bool,
     /// Fixed width; `None` fills the container.
@@ -530,7 +532,7 @@ pub struct Field<'a> {
 /// Editing is select-all-on-first-input (see [`apply_edit`]); no caret or
 /// selection rendering in this iteration.
 pub fn text_field(
-    field: &Field<'_>,
+    field: Field,
     on_edit: impl Fn(Edit, &mut Window, &mut App) + Clone + 'static,
 ) -> impl IntoElement {
     let t = field.tokens;
@@ -598,24 +600,26 @@ pub fn text_field(
 
 /// Bounded number editor: minus button, text field, plus button.
 pub fn number_field(
-    field: &Field<'_>,
+    field: Field,
     on_edit: impl Fn(Edit, &mut Window, &mut App) + Clone + 'static,
     on_delta: impl Fn(i64, &mut Window, &mut App) + Clone + 'static,
 ) -> impl IntoElement {
     let minus = on_delta.clone();
     let plus = on_delta;
+    let minus_id = format!("{}-minus", field.id);
+    let plus_id = format!("{}-plus", field.id);
     div()
         .flex()
         .items_center()
         .gap_1()
         .child(stepper_button(
-            format!("{}-minus", field.id),
+            minus_id,
             gpui_icons::LucideIcon::Minus,
             move |window, cx| minus(-1, window, cx),
         ))
         .child(text_field(field, on_edit))
         .child(stepper_button(
-            format!("{}-plus", field.id),
+            plus_id,
             gpui_icons::LucideIcon::Plus,
             move |window, cx| plus(1, window, cx),
         ))
@@ -643,4 +647,35 @@ fn stepper_button(
                 .text_color(style::ACCENT),
         )
         .on_click(move |_, window, cx| on_click(window, cx))
+}
+
+/// Minimal text tooltip view used by [`text_tooltip`].
+pub struct SimpleTooltip {
+    text: String,
+}
+
+impl Render for SimpleTooltip {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2()
+            .py(px(3.0))
+            .rounded(px(style::RADIUS_CONTROL))
+            .bg(gpui::rgb(0x000000).alpha(0.85))
+            .text_size(px(12.0))
+            .text_color(gpui::rgb(0xFFFFFF))
+            .child(self.text.clone())
+    }
+}
+
+/// Builds the tooltip required by `InteractiveElement::tooltip`.
+///
+/// Use as `.tooltip(controls::text_tooltip(tr(language, TextKey::X)))`.
+pub fn text_tooltip(
+    text: impl Into<String>,
+) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView + 'static {
+    let text = text.into();
+    move |_, cx| {
+        let owned = text.clone();
+        cx.new(move |_| SimpleTooltip { text: owned }).into()
+    }
 }
