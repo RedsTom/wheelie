@@ -59,7 +59,10 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
+CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu. It is
+path-filtered: docs-only changes (`**.md`, `docs/**`, `LICENSE`), packaging and
+`release.yml` changes do not trigger it; a `.github/workflows/ci.yml` change
+always does, and `workflow_dispatch` covers the rare "test docs anyway" case.
 
 ## Branching & release pipeline
 
