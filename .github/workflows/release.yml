@@ -1,0 +1,209 @@
+name: Release
+
+# Publishable artifacts are built when a GitHub release is published,
+# stable or pre-release alike. See AGENTS.md "Branching & release pipeline".
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  meta:
+    name: Version guard
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.guard.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate tag against Cargo.toml
+        id: guard
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Release tag '$tag' is not vMAJOR.MINOR.PATCH[-prerelease]"
+            exit 1
+          fi
+          version="${tag#v}"
+          base="${version%%-*}"
+          cargo_version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$base" != "$cargo_version" ]; then
+            echo "::error::Tag base version $base does not match Cargo.toml version $cargo_version. Bump Cargo.toml before tagging."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows x64
+    needs: meta
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: NSIS installer
+        run: |
+          choco install nsis -y --limit-output | Out-Null
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $ws = $env:GITHUB_WORKSPACE
+          $ver = "${{ needs.meta.outputs.version }}"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/DAPP_VERSION=$ver" `
+            "/DBINARY=$ws\target\release\wheelie.exe" `
+            "/DICON=$ws\assets\icons\app.ico" `
+            "/DLICENSE=$ws\LICENSE" `
+            "/DOUTFILE=$ws\dist\Wheelie-$ver-win-x64-setup.exe" `
+            packaging\windows\installer.nsi
+
+      - name: WiX MSI installer
+        shell: pwsh
+        run: |
+          choco install wixtoolset -y --limit-output | Out-Null
+          $wixBin = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          $env:PATH = "$wixBin;$env:PATH"
+          $env:WIX = $wixBin
+          cargo install cargo-wix --locked
+          cargo wix --no-build --target-bin-dir target\release `
+            -o "dist\Wheelie-${{ needs.meta.outputs.version }}-win-x64.msi"
+
+      - name: Portable zip
+        run: |
+          New-Item -ItemType Directory -Force dist\portable | Out-Null
+          Copy-Item target\release\wheelie.exe dist\portable\
+          Copy-Item LICENSE dist\portable\LICENSE.txt
+          Compress-Archive -Path dist\portable\* `
+            -DestinationPath "dist\Wheelie-${{ needs.meta.outputs.version }}-win-x64-portable.zip"
+          Remove-Item -Recurse -Force dist\portable
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal
+    needs: meta
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build both Apple slices
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+
+      - name: Fuse and package app, dmg and zip
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir -p dist/universal
+          lipo -create -output dist/universal/wheelie \
+            target/aarch64-apple-darwin/release/wheelie \
+            target/x86_64-apple-darwin/release/wheelie
+          VERSION="$VERSION" BIN=dist/universal/wheelie OUT_DIR=dist bash packaging/macos/make-app.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux x64
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxcb1-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libgl1-mesa-dev \
+            libwayland-dev \
+            libxdo-dev \
+            libfontconfig-dev \
+            libssl-dev \
+            libvulkan1 \
+            rpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package deb, rpm, AppImage and portable tarball
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          BIN: target/release/wheelie
+          OUT_DIR: dist
+        run: |
+          bash packaging/linux/make-deb.sh
+          bash packaging/linux/make-rpm.sh
+          bash packaging/linux/make-appimage.sh
+          bash packaging/linux/make-portable.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Attach to release
+    needs: [meta, windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Upload all artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No build artifacts found"
+            exit 1
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber

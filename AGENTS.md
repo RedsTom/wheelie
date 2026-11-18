@@ -61,6 +61,45 @@ cargo fmt --all -- --check
 
 CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 
+## Branching & release pipeline
+
+Long-lived branches:
+
+- `main`: the shippable state. Every release is tagged on `main`.
+- `dev`: integration branch for features. It must stay CI-green.
+
+Flow:
+
+- **Feature**: branch `feat/<slug>` from `dev`, open a PR into `dev`. CI
+  (`.github/workflows/ci.yml`) gates fmt, clippy and tests on every push and PR.
+- **Release**: open a PR `dev` → `main`. Bump the `version` in `Cargo.toml` in
+  that PR. After merge, tag `vX.Y.Z` (or `vX.Y.Z-beta.N` for betas) and create
+  the GitHub release; check "pre-release" for betas. Publishing the release
+  triggers CD (`.github/workflows/release.yml`).
+- **Hotfix**: when `main` is broken, branch `hotfix/<slug>` from `main`, PR into
+  `main`, tag the next patch version, publish, then merge the fix back into `dev`.
+
+CD builds, per published release, and attaches these assets to the release:
+
+| Platform | Assets |
+|---|---|
+| Windows x64 | `Wheelie-<ver>-win-x64-setup.exe` (NSIS), `Wheelie-<ver>-win-x64.msi` (WiX via `cargo wix`), `Wheelie-<ver>-win-x64-portable.zip` |
+| macOS universal | `Wheelie-<ver>-macos-universal.dmg`, `Wheelie-<ver>-macos-portable.zip` (arm64 + x86_64 fused with `lipo`, ad-hoc signed) |
+| Linux x64 | `wheelie_<ver>_amd64.deb`, `wheelie-<ver>-1.x86_64.rpm`, `Wheelie-<ver>-x86_64.AppImage`, `Wheelie-<ver>-linux-x64-portable.tar.gz` |
+
+Rules:
+
+- The `meta` job fails the pipeline when the tag base version differs from
+  `Cargo.toml`; prerelease suffixes (`-beta.1`) are allowed on the tag only.
+- Packaging inputs live in `packaging/` (NSIS script, `Info.plist`, desktop
+  entry, deb/rpm/AppImage scripts) and `wix/main.wxs`; keep them in sync with
+  renames and icon changes.
+- Nothing is code-signed: expect SmartScreen on Windows and Gatekeeper on macOS
+  for first launch; say so in the release notes.
+- Release checklist: bump `Cargo.toml` → merge the `dev` → `main` PR → push tag →
+  publish the release → watch the "Release" workflow until the nine assets are
+  attached.
+
 ## Locked decisions
 
 - Rust 1.89, edition 2024.

@@ -1,7 +1,5 @@
-* text=auto eol=lf
-
-*.png binary
-*.ico binary
-*.icns binary
-*.ttf binary
-*.otf binary
+# Packaging scripts run on Linux/macOS runners: keep LF everywhere.
+*.sh text eol=lf
+packaging/linux/wheelie.desktop text eol=lf
+packaging/linux/wheelie.spec text eol=lf
+packaging/macos/Info.plist text eol=lf

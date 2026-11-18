@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Wheelie
+GenericName=Knob controller
+Comment=Turn a keyboard knob into a configurable radial wheel
+Exec=wheelie
+Icon=wheelie
+Categories=Utility;
+Terminal=false
+StartupNotify=true
+Keywords=knob;wheel;volume;brightness;scroll;
