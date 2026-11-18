@@ -1,8 +1,9 @@
 //! First-launch setup shown instead of the settings pages.
 //!
-//! Three short pages pick the interface language, assign the three knob keys
-//! and explain how the wheel is used. The pages reuse the settings widgets and
-//! the shared key-capture listener, so no second window is needed.
+//! Three short pages pick the interface language and start-at-login, assign the
+//! three knob keys and explain how the wheel is used. The pages reuse the
+//! settings widgets and the shared key-capture listener, so no second window is
+//! needed.
 
 use super::{devices, separator};
 use crate::core::{Language, TextKey, tr};
@@ -27,7 +28,7 @@ pub(crate) fn render(
     let step = state.onboarding.step;
 
     let content = match step {
-        OnboardingStep::Language => language_page(t, language, shared),
+        OnboardingStep::Language => language_page(state, t, language, shared),
         OnboardingStep::Keys => keys_page(state, shared, t, language),
         OnboardingStep::Usage => usage_page(t, language),
     };
@@ -136,7 +137,7 @@ fn stepper(t: Tokens, language: Language, current: OnboardingStep) -> AnyElement
     row.into_any_element()
 }
 
-fn language_page(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
+fn language_page(state: &ShellState, t: Tokens, language: Language, shared: &Shared) -> AnyElement {
     let open = shared.borrow().page.open_menu.as_deref() == Some(LANGUAGE_MENU);
     let options = Language::ALL
         .iter()
@@ -146,9 +147,14 @@ fn language_page(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
         .iter()
         .position(|candidate| *candidate == language)
         .unwrap_or(0);
+    let start_at_login = state
+        .runtime
+        .start_at_login_enabled()
+        .unwrap_or(state.runtime.config().general.start_at_login);
 
     let toggle_shared = shared.clone();
     let pick_shared = shared.clone();
+    let login_runtime = state.runtime.clone();
 
     controls::card(
         "onboarding-language",
@@ -200,6 +206,30 @@ fn language_page(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
                             },
                         ))
                     }),
+            ))
+            .child(separator(t))
+            .child(controls::setting_row(
+                "onboarding-autostart-row",
+                t,
+                tr(language, TextKey::StartAtLoginLabel),
+                tr(language, TextKey::StartAtLoginDescription),
+                controls::toggle(
+                    "onboarding-autostart",
+                    start_at_login,
+                    move |_checked, _, _| {
+                        let enabled = !start_at_login;
+                        match login_runtime.set_start_at_login(enabled) {
+                            Ok(()) => {
+                                if let Err(error) = login_runtime.update_config(|config| {
+                                    config.general.start_at_login = enabled;
+                                }) {
+                                    login_runtime.report_error(error.to_string());
+                                }
+                            }
+                            Err(error) => login_runtime.report_error(error.to_string()),
+                        }
+                    },
+                ),
             )),
     )
     .into_any_element()
@@ -366,6 +396,15 @@ mod tests {
     fn first_page_picks_the_language() {
         assert_eq!(OnboardingStep::default(), OnboardingStep::Language);
         assert_eq!(OnboardingStep::ALL.len(), 3);
+    }
+
+    #[test]
+    fn autostart_labels_are_available_in_both_languages() {
+        let fr_label = tr(Language::Fr, TextKey::StartAtLoginLabel);
+        let en_label = tr(Language::En, TextKey::StartAtLoginLabel);
+        assert!(!fr_label.is_empty());
+        assert!(!en_label.is_empty());
+        assert_ne!(fr_label, en_label);
     }
 
     #[test]

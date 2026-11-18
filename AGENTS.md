@@ -127,9 +127,10 @@ Rules:
   makes that set the active one; the wheel never runs an action itself. Knob or
   mouse navigation, Esc closes.
 - Outside the wheel, the three controls run the actions of the active set.
-- Action sets: default volume, brightness and scroll sets; users add sets, name
-  them and pick an icon. Actions: volume, brightness, scroll, macro, shortcut,
-  mouse click, media, launch app.
+- Action sets: default volume (press mutes), brightness where supported, both
+  scroll sets and media transport; users add sets, name them and pick an icon.
+  Actions: volume, brightness, scroll, macro, shortcut, mouse click, media,
+  launch app.
 - Macros: typed steps (key/tap, text, delay, mouse click, scroll); no script DSL.
 - No arbitrary shell execution.
 

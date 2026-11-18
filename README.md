@@ -22,9 +22,9 @@ Wheelie is not affiliated with Microsoft.
 - Radial overlay centered on the primary screen, navigated with the knob or the
   mouse. Each sector is an action set with its own icon; confirming one makes it
   the active set.
-- Action sets: volume, brightness (where the system accepts it), vertical and
-  horizontal scroll by default, and as many more as you like, each with a name,
-  a Phosphor icon and three actions.
+- Action sets: volume (press mutes), brightness (where the system accepts it),
+  vertical and horizontal scroll, and media transport by default, plus as many
+  more as you like, each with a name, an icon and three actions.
 - Actions: volume, mute, brightness (macOS), scroll, macros, keyboard shortcuts,
   mouse clicks, media keys and app launching. Brightness is only offered when the
   input backend supports it.
@@ -79,15 +79,18 @@ dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follo
 ## Using Wheelie
 
 On a fresh install, a short setup opens first: it asks for the interface
-language, assigns the three knob keys, then explains how to use the wheel. It
-appears only once; later launches go straight to the settings.
+language and whether Wheelie should start at login, assigns the three knob keys,
+then explains how to use the wheel. It appears only once; later launches go
+straight to the settings.
 
 1. Open **Devices** and pick the keys your keyboard software sends for knob left,
    knob right and knob press. The three keys must be different; the live check
    shows the last key received.
 2. Open **Actions** to create action sets. The wheel preview on the left selects a
    set; arrow buttons move it around the wheel and the right side edits its name,
-   icon and three actions. A "No action" set ships by default so the knob can be
+   icon and three actions. The volume set mutes on press and shows the same
+   percentage with a muted icon. The media set skips back, skips forward and
+   toggles playback. A "No action" set ships by default so the knob can be
    parked without side effects.
 3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
    mouse clicks.
@@ -124,9 +127,9 @@ GTK/X11/Wayland development packages listed in `.github/workflows/ci.yml`.
 
 Logs are written to the platform data directory under `Wheelie/logs/`. The
 configuration is written atomically; a file that cannot be read is kept as
-`config.toml.bak` and Wheelie starts from defaults. The schema is version 2:
-version 1 documents are upgraded in place and unknown fields are ignored so older
-documents keep working.
+`config.toml.bak` and Wheelie starts from defaults. The schema is version 5:
+older documents are upgraded in place and unknown fields are ignored so older
+configurations keep working.
 
 ## Verification
 

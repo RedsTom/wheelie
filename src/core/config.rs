@@ -1,7 +1,8 @@
 //! Versioned application configuration.
 
 use crate::core::action_set::{
-    ActionSet, NONE_SET_ID, SCROLL_HORIZONTAL_SET_ID, default_sets, horizontal_scroll_set, none_set,
+    ActionSet, MEDIA_SET_ID, NONE_SET_ID, SCROLL_HORIZONTAL_SET_ID, default_sets,
+    horizontal_scroll_set, is_legacy_default_volume_set, media_set, none_set,
 };
 use crate::core::gesture::{GestureConfig, GestureConfigError};
 use crate::core::i18n::Language;
@@ -15,8 +16,9 @@ use thiserror::Error;
 /// Current configuration schema version.
 ///
 /// Version 2 adds the action sets selectable from the wheel; version 3 adds the
-/// default horizontal scroll set; version 4 adds the "no action" set.
-pub const CONFIG_VERSION: u32 = 4;
+/// default horizontal scroll set; version 4 adds the "no action" set; version 5
+/// mutes on volume press by default and adds the media set.
+pub const CONFIG_VERSION: u32 = 5;
 
 /// First schema version, kept so old documents can be upgraded in place.
 const LEGACY_VERSION_1: u32 = 1;
@@ -24,6 +26,8 @@ const LEGACY_VERSION_1: u32 = 1;
 const LEGACY_VERSION_2: u32 = 2;
 /// Third schema version.
 const LEGACY_VERSION_3: u32 = 3;
+/// Fourth schema version.
+const LEGACY_VERSION_4: u32 = 4;
 
 fn default_true() -> bool {
     true
@@ -320,6 +324,26 @@ impl Config {
             {
                 self.action_sets.push(none_set(self.language));
             }
+            self.version = LEGACY_VERSION_4;
+        }
+
+        if self.version == LEGACY_VERSION_4 {
+            for set in &mut self.action_sets {
+                if is_legacy_default_volume_set(set) {
+                    set.actions.press = crate::core::action::Action::Mute;
+                }
+            }
+
+            if !self.action_sets.is_empty()
+                && !self.action_sets.iter().any(|set| set.id == MEDIA_SET_ID)
+            {
+                let insert_at = self
+                    .action_sets
+                    .iter()
+                    .position(|set| set.id == NONE_SET_ID)
+                    .unwrap_or(self.action_sets.len());
+                self.action_sets.insert(insert_at, media_set(self.language));
+            }
             self.version = CONFIG_VERSION;
         }
     }
@@ -412,6 +436,7 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::SetIcon;
     use crate::core::action::{Action, VolumeDirection};
     use crate::core::action_set::{BRIGHTNESS_SET_ID, VOLUME_SET_ID};
     use crate::core::gesture::{Bindings, Control};
@@ -425,6 +450,22 @@ mod tests {
         }
     }
 
+    fn legacy_config_v4() -> Config {
+        let mut config = Config {
+            version: LEGACY_VERSION_4,
+            ..Default::default()
+        };
+        config.action_sets.retain(|set| set.id != MEDIA_SET_ID);
+        if let Some(volume) = config
+            .action_sets
+            .iter_mut()
+            .find(|set| set.id == VOLUME_SET_ID)
+        {
+            volume.actions.press = Action::None;
+        }
+        config
+    }
+
     #[test]
     fn default_config_is_valid() {
         let config = Config::default();
@@ -432,7 +473,7 @@ mod tests {
         assert_eq!(config.version, CONFIG_VERSION);
         assert!(config.active_profile().is_some());
         assert!(config.active_set().is_some());
-        assert_eq!(config.action_sets.len(), 5);
+        assert_eq!(config.action_sets.len(), 6);
     }
 
     #[test]
@@ -486,7 +527,7 @@ mod tests {
 
         let parsed = Config::from_toml_str(&document).expect("upgrade");
         assert_eq!(parsed.version, CONFIG_VERSION);
-        assert_eq!(parsed.action_sets.len(), 5);
+        assert_eq!(parsed.action_sets.len(), 6);
         assert_eq!(parsed.active_set.as_deref(), Some(VOLUME_SET_ID));
         assert!(
             parsed
@@ -495,6 +536,7 @@ mod tests {
                 .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
         );
         assert!(parsed.action_sets.iter().any(|set| set.id == NONE_SET_ID));
+        assert!(parsed.action_sets.iter().any(|set| set.id == MEDIA_SET_ID));
     }
 
     #[test]
@@ -517,6 +559,70 @@ mod tests {
                 .iter()
                 .any(|set| set.id == SCROLL_HORIZONTAL_SET_ID)
         );
+    }
+
+    #[test]
+    fn version_four_documents_gain_mute_and_the_media_set() {
+        let document = toml::to_string_pretty(&legacy_config_v4()).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        assert_eq!(parsed.version, CONFIG_VERSION);
+        assert_eq!(parsed.action_sets.len(), 6);
+
+        let volume = parsed
+            .action_sets
+            .iter()
+            .find(|set| set.id == VOLUME_SET_ID)
+            .expect("volume set");
+        assert_eq!(volume.actions.press, Action::Mute);
+
+        let media = parsed
+            .action_sets
+            .iter()
+            .find(|set| set.id == MEDIA_SET_ID)
+            .expect("media set");
+        assert_eq!(media.icon, SetIcon::Media);
+        assert_eq!(media.name, "Médias");
+    }
+
+    #[test]
+    fn customized_volume_press_is_preserved_during_upgrade() {
+        let mut config = legacy_config_v4();
+        if let Some(volume) = config
+            .action_sets
+            .iter_mut()
+            .find(|set| set.id == VOLUME_SET_ID)
+        {
+            volume.actions.left = Action::Mute;
+        }
+        let document = toml::to_string_pretty(&config).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        let volume = parsed
+            .action_sets
+            .iter()
+            .find(|set| set.id == VOLUME_SET_ID)
+            .expect("volume set");
+        assert_eq!(volume.actions.press, Action::None);
+    }
+
+    #[test]
+    fn existing_media_set_is_preserved_during_upgrade() {
+        let mut config = legacy_config_v4();
+        config
+            .action_sets
+            .push(ActionSet::new(MEDIA_SET_ID, "My music", SetIcon::Star));
+        let document = toml::to_string_pretty(&config).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        let media = parsed
+            .action_sets
+            .iter()
+            .find(|set| set.id == MEDIA_SET_ID)
+            .expect("media set");
+        assert_eq!(media.name, "My music");
+        assert_eq!(media.icon, SetIcon::Star);
+        assert_eq!(parsed.action_sets.len(), 6);
     }
 
     #[test]
@@ -700,6 +806,7 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(volume.actions.press, Action::Mute);
 
         let brightness = &config.action_sets[1];
         assert_eq!(brightness.id, BRIGHTNESS_SET_ID);

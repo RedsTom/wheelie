@@ -206,6 +206,7 @@ pub enum TextKey {
     SetBrightness,
     SetScroll,
     SetScrollHorizontal,
+    SetMedia,
     SetNone,
     ActiveSetLabel,
     AddSetButton,
@@ -403,6 +404,7 @@ impl TextKey {
         Self::SetBrightness,
         Self::SetScroll,
         Self::SetScrollHorizontal,
+        Self::SetMedia,
         Self::SetNone,
         Self::ActiveSetLabel,
         Self::AddSetButton,
@@ -1198,6 +1200,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::SetScrollHorizontal,
         fr: "Défilement horizontal",
         en: "Horizontal scroll",
+    },
+    Translation {
+        key: TextKey::SetMedia,
+        fr: "Médias",
+        en: "Media",
     },
     Translation {
         key: TextKey::SetNone,
