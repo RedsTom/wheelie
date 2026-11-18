@@ -1,41 +1,68 @@
+<div align="center">
+
+<img src="assets/logo/logo-4x.png" alt="Wheelie logo" width="120">
+
 # Wheelie
 
-<img src="assets/logo/logo-2x.png" alt="Wheelie logo" width="96">
+**Turn a keyboard knob into a radial command wheel.**
 
-Cross-platform knob utility written in Rust. Wheelie recreates the **UI/UX of the
-Windows Wheel** — a radial menu driven by a keyboard knob — without emulating the
-Windows Wheel itself. You assign the keys your keyboard software emits for knob
-left, knob right and knob press; Wheelie captures them exclusively and runs its own
-actions.
+[![CI][ci-shield]][ci-link]
+[![Release][release-shield]][releases-link]
+[![Downloads][downloads-shield]][releases-link]
+[![License][license-shield]][license-link]
+[![Platforms][platforms-shield]](#platform-support)
 
-> **Status: v0.1.0.** The full application is implemented: runtime wiring,
-> configuration persistence, settings pages, radial overlay, tray icon, platform
-> notices and tests. Progress is tracked in [`ROADMAP.md`](ROADMAP.md); physical
-> knob verification follows the checklist in [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md).
+Wheelie recreates the **Windows Wheel UI/UX** — a radial menu driven by a
+keyboard knob — on Windows, macOS and Linux. It is not a Windows Wheel
+emulator, needs no driver, and is not affiliated with Microsoft.
 
-Wheelie is not affiliated with Microsoft.
+</div>
 
-## Features
+## How it works
 
-- Knob left/right/press key assignment with a live test button.
-- Exclusive global capture of the configured keys.
-- Radial overlay centered on the primary screen, navigated with the knob or the
-  mouse. Each sector is an action set with its own icon; confirming one makes it
-  the active set.
-- Action sets: volume (press mutes), brightness (where the system accepts it),
-  vertical and horizontal scroll, and media transport by default, plus as many
-  more as you like, each with a name, an icon and three actions.
-- Actions: volume, mute, brightness (macOS), scroll, macros, keyboard shortcuts,
-  mouse clicks, media keys and app launching. Brightness is only offered when the
-  input backend supports it.
-- Macro editor with key, text, delay, mouse click and scroll steps.
-- Tray icon with only the relevant show/hide and pause/resume actions, plus quit;
-  closing settings keeps Wheelie running in the tray.
-- Optional start at login.
-- French and English user interface, dark and light themes.
-- First-launch setup that picks the language, assigns the knob keys and explains
-  the wheel.
-- Windows, macOS and Linux X11. Wayland is best-effort and clearly warned about.
+You assign the keys your keyboard software emits for **knob left**, **knob
+right** and **knob press**. Wheelie captures them exclusively — no app loses
+them to the background — and runs your own actions instead.
+
+1. **Set up once.** On first launch, a short guided setup picks the interface
+   language, assigns the three knob keys with a live test button, and explains
+   the wheel.
+2. **Compose your wheel.** Each sector is an *action set* with its own name and
+   icon — volume, brightness, scrolling, media, or anything you invent.
+3. **Double-click the knob.** The radial overlay opens on your primary screen.
+   Rotate or point to select a set, press to make it active. Outside the wheel,
+   rotation and a single press run the active set's actions.
+
+## Highlights
+
+- **Action sets** ship ready to use: volume (press mutes), brightness where the
+  system accepts it, vertical and horizontal scroll, and media transport. Add as
+  many as you like, each with a name, an icon and three actions.
+- **Eight action types**: volume, brightness, scroll, macro, keyboard shortcut,
+  mouse click, media control and app launching.
+- **Macro editor** with typed steps — keys, text, delays, clicks and scrolls.
+  No scripting language, no arbitrary shell execution.
+- **Tray + autostart**: closing the window hides Wheelie to the tray; the menu
+  only shows what applies right now. Optionally start at login, single-instance
+  guaranteed.
+- **French and English**, dark and light themes.
+- **Portable and installed builds** for every platform, built automatically for
+  each release.
+
+## Download
+
+Grab the latest release for your platform:
+
+| Platform | Installer | Portable |
+| --- | --- | --- |
+| Windows 10/11 (x64) | `*-win-x64-setup.exe` | `*-win-x64-portable.zip` |
+| macOS 12+ (universal) | `*-macos-universal.dmg` | `*-macos-portable.zip` |
+| Linux x64 | `.deb`, `.rpm`, `.AppImage` | `*-linux-x64-portable.tar.gz` |
+
+> Builds are not code-signed yet: expect one SmartScreen prompt on Windows and a
+> Gatekeeper confirmation on macOS (right-click → Open).
+
+Releases: [latest stable][releases-link] · [all releases][releases-link]
 
 ## Platform support
 
@@ -44,78 +71,11 @@ Wheelie is not affiliated with Microsoft.
 | Windows 10/11 | Exclusive global hotkeys | Supported |
 | macOS | Global hotkeys; Accessibility/Input Monitoring may be required for media keys | Supported with permissions |
 | Linux X11 | Exclusive X11 grabs | Supported |
-| Linux Wayland | Best-effort; native global capture is not generally available | Documented limitation |
+| Linux Wayland | Native global capture is not available to normal apps | Best-effort, clearly warned |
 
-The tray icon is best-effort on Linux: it needs a GTK main loop on the window
-thread, which the UI toolkit does not provide. When creation fails, Wheelie logs
-the reason and keeps running without a tray icon.
-
-## Stack
-
-- Rust 1.89, edition 2024.
-- `eframe`/`egui` for the settings window and radial overlay.
-- `global-hotkey` for exclusive global hotkeys.
-- `enigo` for cross-platform input simulation.
-- `tray-icon` for the system tray.
-- `egui-phosphor` for the icon set.
-- `serde` + `toml` for configuration.
-- Inter font (OFL-1.1), bundled in `assets/fonts`.
-- No Tauri, WebView, async runtime or kernel driver.
-
-## Architecture
-
-```
-src/main.rs       composition root
-src/lib.rs        module root
-src/core/         pure domain and translations
-src/platform/     operating-system adapters
-src/app/          runtime orchestration
-src/ui/           eframe views and widgets
-```
-
-Dependency direction: `core → platform → app → ui`. The root binary only wires
-dependencies. See [`AGENTS.md`](AGENTS.md) for the constraints agents must follow.
-
-## Using Wheelie
-
-On a fresh install, a short setup opens first: it asks for the interface
-language and whether Wheelie should start at login, assigns the three knob keys,
-then explains how to use the wheel. It appears only once; later launches go
-straight to the settings.
-
-1. Open **Devices** and pick the keys your keyboard software sends for knob left,
-   knob right and knob press. The three keys must be different; the live check
-   shows the last key received.
-2. Open **Actions** to create action sets. The wheel preview on the left selects a
-   set; arrow buttons move it around the wheel and the right side edits its name,
-   icon and three actions. The volume set mutes on press and shows the same
-   percentage with a muted icon. The media set skips back, skips forward and
-   toggles playback. A "No action" set ships by default so the knob can be
-   parked without side effects.
-3. Open **Macros** to build reusable sequences of keys, text, delays, scrolls and
-   mouse clicks.
-4. Press the knob twice to open the wheel. Rotate to move between sets, press to
-   make one active, or click its sector. The wheel closes with `Esc`, a click
-   outside it, or as soon as another window takes focus. Outside the wheel,
-   rotation and a single press run the actions of the active set; a single press
-   waits for the double-click window (350 ms by default).
-
-Closing the settings window hides Wheelie to the tray. The tray menu shows only
-the action that applies: **Hide** while the window is open, **Show** while it is
-closed, and **Pause** or **Resume** depending on the current state. **Quit** is
-always available. Only one Wheelie instance runs at a time.
-
-## Development
-
-```bash
-cargo run
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo fmt --all -- --check
-```
-
-The CI workflow builds and tests on Windows, macOS and Ubuntu. Linux requires the
-GTK/X11/Wayland development packages listed in `.github/workflows/ci.yml`.
+The tray icon is best-effort on Linux: when creation fails, Wheelie logs the
+reason and keeps running without it. The app stays fully usable from the
+settings window with no knob configured.
 
 ## Configuration
 
@@ -125,18 +85,40 @@ GTK/X11/Wayland development packages listed in `.github/workflows/ci.yml`.
 | Linux | `~/.config/wheelie/config.toml` |
 | macOS | `~/Library/Application Support/Wheelie/config.toml` |
 
-Logs are written to the platform data directory under `Wheelie/logs/`. The
-configuration is written atomically; a file that cannot be read is kept as
-`config.toml.bak` and Wheelie starts from defaults. The schema is version 5:
-older documents are upgraded in place and unknown fields are ignored so older
-configurations keep working.
+Config writes are atomic; an unreadable file is kept as `config.toml.bak` and
+Wheelie starts from defaults. The schema is versioned: older configurations are
+upgraded in place and unknown fields never break a downgrade path. Logs live in
+the platform data directory under `Wheelie/logs/`.
 
-## Verification
+## Build from source
 
-Automated tests cover the domain rules, configuration persistence, the action
-worker and platform adapters with mocks. Physical knob verification is manual:
-follow [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md).
+Requires a recent stable Rust toolchain (see `rust-version` in `Cargo.toml`).
+
+```bash
+cargo run              # develop
+cargo test             # domain, persistence and mocked platform tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+On Linux, install the GTK/X11/Wayland development packages listed in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) first. Physical-knob
+verification follows [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md); the
+development plan lives in [`ROADMAP.md`](ROADMAP.md).
+
+Under the hood: Rust with `eframe`/`egui` (wgpu) and `gpui` components,
+`global-hotkey`, `enigo`, `tray-icon`, `serde` + TOML, bundled Rubik font.
+No Tauri, Electron, WebView, async runtime or kernel driver.
 
 ## License
 
-GPL-3.0-only. See [`LICENSE`](LICENSE).
+[GPL-3.0-only][license-link]. See [`LICENSE`](LICENSE).
+
+[ci-shield]: https://github.com/RedsTom/wheelie/actions/workflows/ci.yml/badge.svg
+[ci-link]: https://github.com/RedsTom/wheelie/actions/workflows/ci.yml
+[release-shield]: https://img.shields.io/github/v/release/RedsTom/wheelie?label=release&color=4B8BFF
+[downloads-shield]: https://img.shields.io/github/downloads/RedsTom/wheelie/total?label=downloads
+[releases-link]: https://github.com/RedsTom/wheelie/releases
+[license-shield]: https://img.shields.io/badge/license-GPL--3.0-blue
+[license-link]: LICENSE
+[platforms-shield]: https://img.shields.io/badge/platforms-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-lightgrey
