@@ -9,7 +9,7 @@
 //! removed on close and recreated by the tray Show command while
 //! `QuitMode::Explicit` keeps the process alive.
 
-use crate::app::{RuntimeHandle, RuntimeSnapshot, RuntimeState};
+use crate::app::{RuntimeHandle, RuntimeSnapshot};
 use crate::core::{
     APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, TextKey, ThemeMode,
     VERSION, tr,
@@ -20,7 +20,9 @@ use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::PageState;
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{assets, gestures, osd_window, overlay_window, pages, services, style, window};
+use crate::ui::{
+    assets, controls, gestures, osd_window, overlay_window, pages, services, style, window,
+};
 use gpui::prelude::*;
 use gpui::{
     App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window, WindowHandle,
@@ -161,16 +163,6 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    fn state_pill(&self, state: &ShellState) -> (&'static str, gpui::Rgba) {
-        let language = state.preferences.language;
-        match state.snapshot.state {
-            RuntimeState::Starting => (tr(language, TextKey::StateStarting), style::WARNING),
-            RuntimeState::Running => (tr(language, TextKey::StateRunning), style::SUCCESS),
-            RuntimeState::Paused => (tr(language, TextKey::StatePaused), style::WARNING),
-            RuntimeState::Stopped => (tr(language, TextKey::StateStopped), style::DANGER),
-        }
-    }
-
     fn sidebar(&self, cx: &mut Context<Self>, state: &ShellState) -> impl IntoElement {
         let t = style::tokens(state.preferences.theme_mode);
         let language = state.preferences.language;
@@ -213,9 +205,6 @@ impl SettingsView {
             })
             .collect::<Vec<_>>();
 
-        let (state_label, state_color) = self.state_pill(state);
-        let profile = services::active_set_name(state);
-
         div()
             .flex_none()
             .w(px(style::SIDEBAR_WIDTH))
@@ -251,58 +240,196 @@ impl SettingsView {
                     .text_size(px(10.5))
                     .text_color(t.muted)
                     .mb_1()
-                    .child(tr(language, TextKey::Workspace)),
+                    .child(tr(language, TextKey::NavigationLabel)),
             )
             .children(nav)
             .child(div().flex_1())
+            .child(self.sidebar_preferences(state, t, language))
             .child(
                 div()
-                    .w_full()
-                    .rounded(px(style::RADIUS_CARD))
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(t.card)
-                    .p(px(10.0))
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .px_2()
-                            .py(px(1.0))
-                            .rounded_full()
-                            .text_size(px(11.0))
-                            .text_color(state_color)
-                            .bg(gpui::Rgba {
-                                a: 0.16,
-                                ..state_color
-                            })
-                            .child(state_label),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(t.muted)
-                            .child(tr(language, TextKey::ActiveSetLabel)),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(12.0))
-                            .text_color(t.text)
-                            .child(profile),
-                    ),
-            )
-            .child(
-                div()
-                    .mt_2()
+                    .mt_3()
                     .text_size(px(10.5))
                     .text_color(t.muted)
                     .child(format!("v{VERSION} · GPL-3.0")),
             )
+    }
+
+    /// Bottom sidebar section: appearance, language and session startup.
+    fn sidebar_preferences(
+        &self,
+        state: &ShellState,
+        t: style::Tokens,
+        language: Language,
+    ) -> impl IntoElement {
+        let open = state.page.open_menu.as_deref();
+        let theme = state.preferences.theme_mode;
+        let native = state.preferences.language;
+        let width = style::SIDEBAR_WIDTH - 32.0;
+        let start_at_login = state
+            .runtime
+            .start_at_login_enabled()
+            .unwrap_or(state.runtime.config().general.start_at_login);
+
+        let theme_options = ThemeMode::ALL
+            .iter()
+            .map(|mode| theme_label(language, *mode).to_owned())
+            .collect::<Vec<_>>();
+        let theme_selected = ThemeMode::ALL
+            .iter()
+            .position(|mode| *mode == theme)
+            .unwrap_or(0);
+        let language_options = Language::ALL
+            .iter()
+            .map(|lang| lang.native_name().to_owned())
+            .collect::<Vec<_>>();
+        let language_selected = Language::ALL
+            .iter()
+            .position(|lang| *lang == native)
+            .unwrap_or(0);
+
+        let theme_shared = self.shared.clone();
+        let theme_pick = self.shared.clone();
+        let language_shared = self.shared.clone();
+        let language_pick = self.shared.clone();
+        let login_runtime = state.runtime.clone();
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(9.0))
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .text_color(t.muted)
+                    .child(tr(language, TextKey::Workspace)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.0))
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(t.muted)
+                            .child(tr(language, TextKey::ThemeLabel)),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .child(controls::select_button(
+                                "theme",
+                                t,
+                                theme_label(language, theme),
+                                open == Some("theme"),
+                                width,
+                                move |_, _, _| {
+                                    let mut state = theme_shared.borrow_mut();
+                                    state.page.open_menu =
+                                        if state.page.open_menu.as_deref() == Some("theme") {
+                                            None
+                                        } else {
+                                            Some("theme".to_owned())
+                                        };
+                                },
+                            ))
+                            .when(open == Some("theme"), |div| {
+                                div.child(controls::select_menu(
+                                    "theme",
+                                    t,
+                                    &theme_options,
+                                    theme_selected,
+                                    move |index, _, _| {
+                                        let mut state = theme_pick.borrow_mut();
+                                        state.preferences.theme_mode = ThemeMode::ALL[index];
+                                        state.page.open_menu = None;
+                                    },
+                                ))
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.0))
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(t.muted)
+                            .child(tr(language, TextKey::LanguageLabel)),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .child(controls::select_button(
+                                "language",
+                                t,
+                                native.native_name(),
+                                open == Some("language"),
+                                width,
+                                move |_, _, _| {
+                                    let mut state = language_shared.borrow_mut();
+                                    state.page.open_menu =
+                                        if state.page.open_menu.as_deref() == Some("language") {
+                                            None
+                                        } else {
+                                            Some("language".to_owned())
+                                        };
+                                },
+                            ))
+                            .when(open == Some("language"), |div| {
+                                div.child(controls::select_menu(
+                                    "language",
+                                    t,
+                                    &language_options,
+                                    language_selected,
+                                    move |index, _, _| {
+                                        let mut state = language_pick.borrow_mut();
+                                        state.preferences.language = Language::ALL[index];
+                                        state.page.open_menu = None;
+                                    },
+                                ))
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.0))
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(t.muted)
+                            .child(tr(language, TextKey::StartAtLoginLabel)),
+                    )
+                    .child(controls::toggle(
+                        "autostart",
+                        start_at_login,
+                        move |_checked, _, _| {
+                            let enabled = !start_at_login;
+                            match login_runtime.set_start_at_login(enabled) {
+                                Ok(()) => {
+                                    if let Err(error) = login_runtime.update_config(|config| {
+                                        config.general.start_at_login = enabled;
+                                    }) {
+                                        login_runtime.report_error(error.to_string());
+                                    }
+                                }
+                                Err(error) => login_runtime.report_error(error.to_string()),
+                            }
+                        },
+                    )),
+            )
+    }
+}
+
+/// Translated theme mode label shared by the sidebar and settings pages.
+fn theme_label(language: Language, mode: ThemeMode) -> &'static str {
+    match mode {
+        ThemeMode::Dark => tr(language, TextKey::DarkTheme),
+        ThemeMode::Light => tr(language, TextKey::LightTheme),
     }
 }
 

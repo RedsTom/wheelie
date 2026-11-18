@@ -14,6 +14,7 @@ use crate::ui::style::{self, Tokens};
 use crate::ui::wheel_paint;
 use gpui::prelude::*;
 use gpui::{AnyElement, App, AsyncApp, Context, PathPromptOptions, Window, canvas, div, point, px};
+use gpui_kit::component::{WindowExt, button::ButtonVariant};
 use std::path::PathBuf;
 
 pub(crate) fn render(
@@ -271,28 +272,48 @@ fn editor_column(
         "delete-set",
         gpui_icons::LucideIcon::Trash,
         tr(language, TextKey::DeleteSetButton),
-        move |_, _, _| {
-            let mut sets = delete_runtime.config().action_sets.clone();
-            let mut active = delete_runtime.config().active_set.clone();
-            let Some(position) = sets.iter().position(|set| set.id == delete_id) else {
-                return;
-            };
-            let removed = sets.remove(position);
-            if active.as_deref() == Some(removed.id.as_str()) {
-                active = sets.first().map(|set| set.id.clone());
-            }
-            let next = if sets.is_empty() {
-                None
-            } else {
-                Some(position.min(sets.len() - 1))
-            };
-            commit_sets(&delete_runtime, sets, active);
-            delete_shared.borrow_mut().page.selected_set = next.and_then(|index| {
-                delete_runtime
-                    .config()
-                    .action_sets
-                    .get(index)
-                    .map(|set| set.id.clone())
+        move |_, window, cx| {
+            // The dialog builder can run more than once, so it gets owned
+            // copies instead of borrowing values from this click closure.
+            let dialog_shared = delete_shared.clone();
+            let dialog_runtime = delete_runtime.clone();
+            let dialog_id = delete_id.clone();
+            window.open_alert_dialog(cx, move |alert, _, _| {
+                let ok_shared = dialog_shared.clone();
+                let ok_runtime = dialog_runtime.clone();
+                let ok_id = dialog_id.clone();
+                alert
+                    .confirm()
+                    .title(tr(language, TextKey::ConfirmDeleteSetTitle))
+                    .description(tr(language, TextKey::ConfirmDeleteSetBody))
+                    .ok_text(tr(language, TextKey::ConfirmDelete))
+                    .cancel_text(tr(language, TextKey::CancelAction))
+                    .ok_variant(ButtonVariant::Danger)
+                    .on_ok(move |_, _, _| {
+                        let mut sets = ok_runtime.config().action_sets.clone();
+                        let mut active = ok_runtime.config().active_set.clone();
+                        let Some(position) = sets.iter().position(|set| set.id == ok_id) else {
+                            return true;
+                        };
+                        let removed = sets.remove(position);
+                        if active.as_deref() == Some(removed.id.as_str()) {
+                            active = sets.first().map(|set| set.id.clone());
+                        }
+                        let next = if sets.is_empty() {
+                            None
+                        } else {
+                            Some(position.min(sets.len() - 1))
+                        };
+                        commit_sets(&ok_runtime, sets, active);
+                        ok_shared.borrow_mut().page.selected_set = next.and_then(|index| {
+                            ok_runtime
+                                .config()
+                                .action_sets
+                                .get(index)
+                                .map(|set| set.id.clone())
+                        });
+                        true
+                    })
             });
         },
     )

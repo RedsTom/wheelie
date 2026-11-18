@@ -1,23 +1,23 @@
-//! General settings page.
+//! Overview page: status at a glance and a read-only wheel preview.
 
 use super::state_label;
 use crate::app::{AppCommand, RuntimeState};
-use crate::core::{Language, TextKey, ThemeMode, tr};
+use crate::core::{Language, TextKey, WheelGeometry, tr};
 use crate::ui::controls;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
+use crate::ui::wheel_paint;
 use gpui::prelude::*;
-use gpui::{Context, Window, div, img, px};
+use gpui::{Context, Window, canvas, div, img, point, px};
 
 pub(crate) fn render(
     state: &ShellState,
-    shared: &Shared,
-    window: &Window,
+    _shared: &Shared,
+    _window: &Window,
     _cx: &mut Context<SettingsView>,
 ) -> impl IntoElement {
     let t = style::tokens(state.preferences.theme_mode);
     let language = state.preferences.language;
-    let wide = window.viewport_size().width >= px(840.0);
 
     div()
         .flex()
@@ -29,18 +29,7 @@ pub(crate) fn render(
             tr(language, TextKey::GeneralSubtitle),
         ))
         .child(runtime_card(state, t, language))
-        .child(
-            div()
-                .flex()
-                .when(wide, |node| node.flex_row().items_start().gap(px(14.0)))
-                .when(!wide, |node| node.flex_col().gap(px(14.0)))
-                .child(
-                    div()
-                        .w_full()
-                        .child(preferences_card(state, shared, t, language)),
-                )
-                .child(div().w_full().child(getting_started_card(t, language))),
-        )
+        .child(wheel_card(state, t, language))
 }
 
 fn runtime_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoElement {
@@ -150,192 +139,68 @@ fn pause_label(language: Language, resume: bool) -> &'static str {
     )
 }
 
-fn preferences_card(
-    state: &ShellState,
-    shared: &Shared,
-    t: Tokens,
-    language: Language,
-) -> impl IntoElement {
-    let open = state.page.open_menu.as_deref();
-    let theme = state.preferences.theme_mode;
-    let native = state.preferences.language;
+/// Read-only wheel showing the active action set. Selecting a set is done on
+/// the Actions page; this card only reflects the current choice.
+fn wheel_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoElement {
+    const BOX: f32 = 280.0;
 
-    let theme_options = ThemeMode::ALL
-        .iter()
-        .map(|mode| theme_label(language, *mode).to_owned())
-        .collect::<Vec<_>>();
-    let theme_selected = ThemeMode::ALL
-        .iter()
-        .position(|mode| *mode == theme)
+    let config = state.runtime.config();
+    let sets = config.action_sets.clone();
+    let selected = config
+        .active_set
+        .as_deref()
+        .and_then(|id| sets.iter().position(|set| set.id == id))
+        .or(if sets.is_empty() { None } else { Some(0) })
         .unwrap_or(0);
 
-    let language_options = Language::ALL
-        .iter()
-        .map(|lang| lang.native_name().to_owned())
-        .collect::<Vec<_>>();
-    let language_selected = Language::ALL
-        .iter()
-        .position(|lang| *lang == native)
-        .unwrap_or(0);
-
-    let start_at_login = state
-        .runtime
-        .start_at_login_enabled()
-        .unwrap_or(state.runtime.config().general.start_at_login);
-
-    let theme_shared = shared.clone();
-    let theme_pick = shared.clone();
-    let language_shared = shared.clone();
-    let language_pick = shared.clone();
-    let login_runtime = state.runtime.clone();
+    let geometry = WheelGeometry::from_size(BOX);
+    let center = point(px(BOX / 2.0), px(BOX / 2.0));
+    let origin = wheel_paint::origin(center, &geometry);
+    let paint_sets = sets.clone();
+    let title_y = BOX - 8.0;
 
     controls::card(
         t,
         div()
             .flex()
             .flex_col()
+            .gap_2()
             .child(controls::section_title(
                 t,
-                tr(language, TextKey::PreferencesTitle),
-                Some(tr(language, TextKey::PreferencesBody)),
+                tr(language, TextKey::WheelPreviewTitle),
+                Some(tr(language, TextKey::WheelPreviewBody)),
             ))
             .child(
-                div().mt(px(10.0)).child(controls::setting_row(
-                    t,
-                    tr(language, TextKey::ThemeLabel),
-                    tr(language, TextKey::ThemeDescription),
+                div().w_full().flex().justify_center().child(
                     div()
                         .relative()
-                        .child(controls::select_button(
-                            "theme",
-                            t,
-                            theme_label(language, theme),
-                            open == Some("theme"),
-                            130.0,
-                            move |_, _, _| {
-                                let mut page = theme_shared.borrow_mut();
-                                page.page.open_menu =
-                                    if page.page.open_menu.as_deref() == Some("theme") {
-                                        None
-                                    } else {
-                                        Some("theme".to_owned())
-                                    };
-                            },
-                        ))
-                        .when(open == Some("theme"), |div| {
-                            div.child(controls::select_menu(
-                                "theme",
-                                t,
-                                &theme_options,
-                                theme_selected,
-                                move |index, _, _| {
-                                    let mut state = theme_pick.borrow_mut();
-                                    state.preferences.theme_mode = ThemeMode::ALL[index];
-                                    state.page.open_menu = None;
+                        .w(px(BOX))
+                        .h(px(BOX))
+                        .child(
+                            canvas(
+                                |_, _, _| (),
+                                move |bounds, _, window, _| {
+                                    let paint_center = point(
+                                        bounds.origin.x + px(BOX / 2.0),
+                                        bounds.origin.y + px(BOX / 2.0),
+                                    );
+                                    wheel_paint::paint(
+                                        window,
+                                        &geometry,
+                                        paint_center,
+                                        &paint_sets,
+                                        selected,
+                                        None,
+                                    );
                                 },
-                            ))
-                        }),
-                )),
-            )
-            .child(div().my(px(8.0)).child(super::separator(t)))
-            .child(controls::setting_row(
-                t,
-                tr(language, TextKey::LanguageLabel),
-                tr(language, TextKey::LanguageDescription),
-                div()
-                    .relative()
-                    .child(controls::select_button(
-                        "language",
-                        t,
-                        native.native_name(),
-                        open == Some("language"),
-                        130.0,
-                        move |_, _, _| {
-                            let mut page = language_shared.borrow_mut();
-                            page.page.open_menu =
-                                if page.page.open_menu.as_deref() == Some("language") {
-                                    None
-                                } else {
-                                    Some("language".to_owned())
-                                };
-                        },
-                    ))
-                    .when(open == Some("language"), |div| {
-                        div.child(controls::select_menu(
-                            "language",
-                            t,
-                            &language_options,
-                            language_selected,
-                            move |index, _, _| {
-                                let mut state = language_pick.borrow_mut();
-                                state.preferences.language = Language::ALL[index];
-                                state.page.open_menu = None;
-                            },
-                        ))
-                    }),
-            ))
-            .child(div().my(px(8.0)).child(super::separator(t)))
-            .child(controls::setting_row(
-                t,
-                tr(language, TextKey::StartAtLoginLabel),
-                tr(language, TextKey::StartAtLoginDescription),
-                controls::toggle("autostart", start_at_login, move |_checked, _, _| {
-                    let enabled = !start_at_login;
-                    match login_runtime.set_start_at_login(enabled) {
-                        Ok(()) => {
-                            if let Err(error) = login_runtime.update_config(|config| {
-                                config.general.start_at_login = enabled;
-                            }) {
-                                login_runtime.report_error(error.to_string());
-                            }
-                        }
-                        Err(error) => login_runtime.report_error(error.to_string()),
-                    }
-                }),
-            )),
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                        .children(wheel_paint::children(
+                            &geometry, origin, title_y, BOX, &sets, selected, true,
+                        )),
+                ),
+            ),
     )
-}
-
-fn getting_started_card(t: Tokens, language: Language) -> impl IntoElement {
-    controls::card(
-        t,
-        div()
-            .flex()
-            .flex_col()
-            .child(controls::section_title(
-                t,
-                tr(language, TextKey::GettingStartedTitle),
-                Some(tr(language, TextKey::GettingStartedSubtitle)),
-            ))
-            .child(div().mt(px(10.0)).flex().flex_col().gap(px(8.0)).children([
-                controls::timeline_item(
-                    t,
-                    1,
-                    tr(language, TextKey::StepConfigureTitle),
-                    tr(language, TextKey::StepConfigureBody),
-                    true,
-                ),
-                controls::timeline_item(
-                    t,
-                    2,
-                    tr(language, TextKey::StepAssignTitle),
-                    tr(language, TextKey::StepAssignBody),
-                    false,
-                ),
-                controls::timeline_item(
-                    t,
-                    3,
-                    tr(language, TextKey::StepOpenTitle),
-                    tr(language, TextKey::StepOpenBody),
-                    false,
-                ),
-            ])),
-    )
-}
-
-fn theme_label(language: Language, mode: ThemeMode) -> &'static str {
-    match mode {
-        ThemeMode::Dark => tr(language, TextKey::DarkTheme),
-        ThemeMode::Light => tr(language, TextKey::LightTheme),
-    }
 }

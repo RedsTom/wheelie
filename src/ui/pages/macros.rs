@@ -9,6 +9,7 @@ use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{AnyElement, App, Context, Window, div, px};
+use gpui_kit::component::{WindowExt, button::ButtonVariant};
 
 pub(crate) fn render(
     state: &ShellState,
@@ -195,22 +196,39 @@ fn editor_column(
         gpui_icons::LucideIcon::Trash2,
         tr(language, TextKey::DeleteMacroButton),
         move |_, window, cx| {
-            window.blur(cx);
-            let mut macros = del_runtime.config().macros;
-            let Some(position) = macros.iter().position(|m| m.name == target) else {
-                return;
-            };
-            macros.remove(position);
-            let next = if macros.is_empty() {
-                None
-            } else {
-                Some(macros[position.min(macros.len() - 1)].name.clone())
-            };
-            if commit_macros(&del_runtime, macros) {
-                let mut shell = del_shared.borrow_mut();
-                shell.page.selected_macro = next;
-                reset_edit_state(&mut shell.page);
-            }
+            let dialog_shared = del_shared.clone();
+            let dialog_runtime = del_runtime.clone();
+            let dialog_target = target.clone();
+            window.open_alert_dialog(cx, move |alert, _, _| {
+                let ok_shared = dialog_shared.clone();
+                let ok_runtime = dialog_runtime.clone();
+                let ok_target = dialog_target.clone();
+                alert
+                    .confirm()
+                    .title(tr(language, TextKey::ConfirmDeleteMacroTitle))
+                    .description(tr(language, TextKey::ConfirmDeleteMacroBody))
+                    .ok_text(tr(language, TextKey::ConfirmDelete))
+                    .cancel_text(tr(language, TextKey::CancelAction))
+                    .ok_variant(ButtonVariant::Danger)
+                    .on_ok(move |_, _, _| {
+                        let mut macros = ok_runtime.config().macros;
+                        let Some(position) = macros.iter().position(|m| m.name == ok_target) else {
+                            return true;
+                        };
+                        macros.remove(position);
+                        let next = if macros.is_empty() {
+                            None
+                        } else {
+                            Some(macros[position.min(macros.len() - 1)].name.clone())
+                        };
+                        if commit_macros(&ok_runtime, macros) {
+                            let mut shell = ok_shared.borrow_mut();
+                            shell.page.selected_macro = next;
+                            reset_edit_state(&mut shell.page);
+                        }
+                        true
+                    })
+            });
         },
     )
     .into_any_element();
@@ -748,36 +766,54 @@ fn step_row(
         t,
         gpui_icons::LucideIcon::Trash2,
         tr(language, TextKey::RemoveStepButton),
-        move |_, _, _| {
-            let name = {
-                let shell = remove_shared.borrow();
-                shell
-                    .page
-                    .selected_macro
-                    .clone()
-                    .unwrap_or_else(|| remove_rendered.clone())
-            };
-            let removed = with_macro(&remove_runtime, &name, |m| {
-                if index < m.steps.len() {
-                    m.steps.remove(index);
-                    true
-                } else {
-                    false
-                }
+        move |_, window, cx| {
+            let dialog_shared = remove_shared.clone();
+            let dialog_runtime = remove_runtime.clone();
+            let dialog_rendered = remove_rendered.clone();
+            window.open_alert_dialog(cx, move |alert, _, _| {
+                let ok_shared = dialog_shared.clone();
+                let ok_runtime = dialog_runtime.clone();
+                let ok_rendered = dialog_rendered.clone();
+                alert
+                    .confirm()
+                    .title(tr(language, TextKey::ConfirmDeleteStepTitle))
+                    .description(tr(language, TextKey::ConfirmDeleteStepBody))
+                    .ok_text(tr(language, TextKey::ConfirmDelete))
+                    .cancel_text(tr(language, TextKey::CancelAction))
+                    .ok_variant(ButtonVariant::Danger)
+                    .on_ok(move |_, _, _| {
+                        let name = {
+                            let shell = ok_shared.borrow();
+                            shell
+                                .page
+                                .selected_macro
+                                .clone()
+                                .unwrap_or_else(|| ok_rendered.clone())
+                        };
+                        let removed = with_macro(&ok_runtime, &name, |m| {
+                            if index < m.steps.len() {
+                                m.steps.remove(index);
+                                true
+                            } else {
+                                false
+                            }
+                        });
+                        if removed {
+                            let mut shell = ok_shared.borrow_mut();
+                            shell.page.open_menu = None;
+                            if let Some(step) = shell.page.selected_step {
+                                shell.page.selected_step = if step == index {
+                                    None
+                                } else if step > index {
+                                    Some(step - 1)
+                                } else {
+                                    Some(step)
+                                };
+                            }
+                        }
+                        true
+                    })
             });
-            if removed {
-                let mut shell = remove_shared.borrow_mut();
-                shell.page.open_menu = None;
-                if let Some(step) = shell.page.selected_step {
-                    shell.page.selected_step = if step == index {
-                        None
-                    } else if step > index {
-                        Some(step - 1)
-                    } else {
-                        Some(step)
-                    };
-                }
-            }
         },
     );
 

@@ -217,6 +217,19 @@ pub enum TextKey {
     EmptyStepsLabel,
     MoveSetLeft,
     MoveSetRight,
+    NavigationLabel,
+    WheelPreviewTitle,
+    WheelPreviewBody,
+    OpenSourceTitle,
+    OpenSourceBody,
+    ConfirmDeleteSetTitle,
+    ConfirmDeleteSetBody,
+    ConfirmDeleteMacroTitle,
+    ConfirmDeleteMacroBody,
+    ConfirmDeleteStepTitle,
+    ConfirmDeleteStepBody,
+    ConfirmDelete,
+    CancelAction,
 }
 
 impl TextKey {
@@ -381,6 +394,19 @@ impl TextKey {
         Self::EmptyStepsLabel,
         Self::MoveSetLeft,
         Self::MoveSetRight,
+        Self::NavigationLabel,
+        Self::WheelPreviewTitle,
+        Self::WheelPreviewBody,
+        Self::OpenSourceTitle,
+        Self::OpenSourceBody,
+        Self::ConfirmDeleteSetTitle,
+        Self::ConfirmDeleteSetBody,
+        Self::ConfirmDeleteMacroTitle,
+        Self::ConfirmDeleteMacroBody,
+        Self::ConfirmDeleteStepTitle,
+        Self::ConfirmDeleteStepBody,
+        Self::ConfirmDelete,
+        Self::CancelAction,
     ];
 }
 
@@ -405,8 +431,8 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::TabGeneral,
-        fr: "Général",
-        en: "General",
+        fr: "Aperçu",
+        en: "Overview",
     },
     Translation {
         key: TextKey::TabDevices,
@@ -430,8 +456,8 @@ pub const TRANSLATIONS: &[Translation] = &[
     },
     Translation {
         key: TextKey::GeneralSubtitle,
-        fr: "État de Wheelie, apparence et langue.",
-        en: "Wheelie status, appearance and language.",
+        fr: "Votre roue et son état en un coup d'œil.",
+        en: "Your wheel and its status at a glance.",
     },
     Translation {
         key: TextKey::DevicesSubtitle,
@@ -1187,6 +1213,71 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::MoveSetRight,
         fr: "Déplacer vers la droite",
         en: "Move right",
+    },
+    Translation {
+        key: TextKey::NavigationLabel,
+        fr: "Navigation",
+        en: "Navigation",
+    },
+    Translation {
+        key: TextKey::WheelPreviewTitle,
+        fr: "Votre roue",
+        en: "Your wheel",
+    },
+    Translation {
+        key: TextKey::WheelPreviewBody,
+        fr: "L'ensemble actif est mis en avant.",
+        en: "The active set is highlighted.",
+    },
+    Translation {
+        key: TextKey::OpenSourceTitle,
+        fr: "Open-source",
+        en: "Open source",
+    },
+    Translation {
+        key: TextKey::OpenSourceBody,
+        fr: "Wheelie repose sur ces bibliothèques libres.",
+        en: "Wheelie is built on these open-source libraries.",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteSetTitle,
+        fr: "Supprimer cet ensemble ?",
+        en: "Delete this set?",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteSetBody,
+        fr: "Cet ensemble d'actions et ses gestes seront supprimés. Cette action est irréversible.",
+        en: "This action set and its gestures will be removed. This cannot be undone.",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteMacroTitle,
+        fr: "Supprimer cette macro ?",
+        en: "Delete this macro?",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteMacroBody,
+        fr: "La macro et ses étapes seront supprimées. Cette action est irréversible.",
+        en: "The macro and its steps will be removed. This cannot be undone.",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteStepTitle,
+        fr: "Supprimer cette étape ?",
+        en: "Delete this step?",
+    },
+    Translation {
+        key: TextKey::ConfirmDeleteStepBody,
+        fr: "L'étape sera retirée de la macro.",
+        en: "The step will be removed from the macro.",
+    },
+    Translation {
+        key: TextKey::ConfirmDelete,
+        fr: "Supprimer",
+        en: "Delete",
+    },
+    Translation {
+        key: TextKey::CancelAction,
+        fr: "Annuler",
+        en: "Cancel",
     },
 ];
 
