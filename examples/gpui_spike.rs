@@ -23,7 +23,7 @@ use gpui::prelude::*;
 use gpui::{
     App, AssetSource, AsyncApp, Bounds, Context, Path, PathBuilder, Pixels, Point, QuitMode,
     Render, SharedString, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowHandle, WindowKind, WindowOptions, canvas, div, point, px, rgba, rgb, size, svg,
+    WindowHandle, WindowKind, WindowOptions, canvas, div, point, px, rgb, rgba, size, svg,
 };
 use gpui_platform::application;
 use wheelie::core::{KeyChord, KeyCode, Language};
@@ -38,9 +38,7 @@ struct SpikeAssets;
 impl AssetSource for SpikeAssets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
         Ok(match path {
-            "icons/plus.svg" => Some(Cow::Borrowed(include_bytes!(
-                "../assets/icons/plus.svg"
-            ))),
+            "icons/plus.svg" => Some(Cow::Borrowed(include_bytes!("../assets/icons/plus.svg"))),
             _ => None,
         })
     }
@@ -380,7 +378,7 @@ fn open_overlay(cx: &mut App, shared: &Shared) {
             // Applied after gpui finishes applying WindowOptions (which would
             // otherwise overwrite the accent policy with state 2).
             window.defer(cx, |window, _| apply_accent_state(window));
-            cx.new(|cx| OverlayView {
+            cx.new(|_cx| OverlayView {
                 shared: shared.clone(),
             })
         })
@@ -407,7 +405,7 @@ fn open_settings(cx: &mut App, shared: &Shared) {
     };
     let handle = cx
         .open_window(options, |_, cx| {
-            cx.new(|cx| SettingsView {
+            cx.new(|_cx| SettingsView {
                 shared: shared.clone(),
             })
         })
@@ -445,11 +443,7 @@ fn notify_windows(cx: &mut App, shared: &Shared) {
 // ---------------------------------------------------------------------------
 
 fn poll_tick(cx: &mut App, shared: &Shared) {
-    let mut open_settings_after = false;
-    let mut close_settings = Vec::new();
-    let mut quit_now = false;
-
-    {
+    let (close_settings, open_settings_after, quit_now) = {
         let mut state = shared.borrow_mut();
         state.ticks += 1;
 
@@ -478,11 +472,13 @@ fn poll_tick(cx: &mut App, shared: &Shared) {
             state.hotkey_events += hotkeys.poll().len();
         }
 
-        open_settings_after = state.settings_needs_open;
+        let open = state.settings_needs_open;
         state.settings_needs_open = false;
-        close_settings.append(&mut state.pending_close);
-        quit_now = state.quit.load(Ordering::SeqCst);
-    }
+        let mut close = Vec::new();
+        close.append(&mut state.pending_close);
+        let quit = state.quit.load(Ordering::SeqCst);
+        (close, open, quit)
+    };
 
     for handle in close_settings {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -510,9 +506,9 @@ fn run_spike() {
             cx.set_quit_mode(QuitMode::Explicit);
 
             let _ = cx.text_system().add_fonts(vec![
-            Cow::Borrowed(include_bytes!("../assets/fonts/Rubik-Regular.ttf").as_slice()),
-            Cow::Borrowed(include_bytes!("../assets/fonts/Rubik-SemiBold.ttf").as_slice()),
-        ]);
+                Cow::Borrowed(include_bytes!("../assets/fonts/Rubik-Regular.ttf").as_slice()),
+                Cow::Borrowed(include_bytes!("../assets/fonts/Rubik-SemiBold.ttf").as_slice()),
+            ]);
 
             let shared: Shared = Rc::new(RefCell::new(SpikeState::new()));
 
@@ -546,16 +542,18 @@ fn run_spike() {
             open_settings(cx, &shared);
 
             let tick_shared = shared.clone();
-            cx.spawn(async move |cx: &mut AsyncApp| loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(35))
-                    .await;
-                let quit = cx.update(|app| {
-                    poll_tick(app, &tick_shared);
-                    tick_shared.borrow().quit.load(Ordering::SeqCst)
-                });
-                if quit {
-                    break;
+            cx.spawn(async move |cx: &mut AsyncApp| {
+                loop {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(35))
+                        .await;
+                    let quit = cx.update(|app| {
+                        poll_tick(app, &tick_shared);
+                        tick_shared.borrow().quit.load(Ordering::SeqCst)
+                    });
+                    if quit {
+                        break;
+                    }
                 }
             })
             .detach();

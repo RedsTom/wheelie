@@ -51,20 +51,20 @@ const LIGHT_MUTED: Color32 = Color32::from_rgb(110, 118, 129);
 
 pub use crate::core::ThemeMode;
 
-/// Installs the bundled Inter family. Call once, before the first frame.
+/// Installs the bundled Rubik family. Call once, before the first frame.
 pub fn install_fonts(context: &egui::Context) {
     let mut fonts = FontDefinitions::default();
 
     fonts.font_data.insert(
-        "inter-regular".to_owned(),
+        "rubik-regular".to_owned(),
         Arc::new(FontData::from_static(include_bytes!(
-            "../../assets/fonts/Inter-Regular.ttf"
+            "../../assets/fonts/Rubik-Regular.ttf"
         ))),
     );
     fonts.font_data.insert(
-        "inter-semibold".to_owned(),
+        "rubik-semibold".to_owned(),
         Arc::new(FontData::from_static(include_bytes!(
-            "../../assets/fonts/Inter-SemiBold.ttf"
+            "../../assets/fonts/Rubik-SemiBold.ttf"
         ))),
     );
 
@@ -72,20 +72,28 @@ pub fn install_fonts(context: &egui::Context) {
         .families
         .entry(FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter-regular".to_owned());
+        .insert(0, "rubik-regular".to_owned());
     fonts.families.insert(
-        FontFamily::Name("InterSemiBold".into()),
-        vec!["inter-semibold".to_owned(), "inter-regular".to_owned()],
+        FontFamily::Name("HeadingSemiBold".into()),
+        vec!["rubik-semibold".to_owned(), "rubik-regular".to_owned()],
     );
 
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+
+    // Register a dedicated family containing ONLY phosphor so dedicated icon widgets
+    // query the icon font directly.
+    // FontFamily::Proportional keeps Rubik as primary so all normal text remains clean.
+    fonts.families.insert(
+        FontFamily::Name("phosphor".into()),
+        vec!["phosphor".to_owned()],
+    );
 
     context.set_fonts(fonts);
 }
 
 /// Semibold font used for headings and selected navigation labels.
 pub fn heading_font(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("InterSemiBold".into()))
+    FontId::new(size, FontFamily::Name("HeadingSemiBold".into()))
 }
 
 /// Applies the selected theme to the egui context.

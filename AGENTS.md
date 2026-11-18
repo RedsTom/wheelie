@@ -64,7 +64,7 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 ## Locked decisions
 
 - Rust 1.89, edition 2024.
-- `eframe`/`egui` 0.33.3. Do not bump to 0.37 until the toolchain is Rust 1.95.
+- `eframe`/`egui` 0.33.3 with `Renderer::Wgpu`. Do not bump to 0.37 until the toolchain is Rust 1.95.
 - `egui-phosphor` 0.11 for action-set icons; later versions require newer egui.
 - `tray-icon` 0.24.2. Do not bump to 0.26 until Rust 1.90.
 - `global-hotkey` 0.10 for exclusive global hotkeys.
@@ -109,16 +109,14 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
   the window event loop, lazily from the first `update()`. On Linux the tray needs
   a GTK main loop that eframe does not provide: attempt creation, log failures and
   continue without a tray icon, never panic.
-- The wheel must render in the root window, not in a secondary egui viewport:
-  secondary viewports composite onto an opaque background with the wgpu backend on
-  Windows (black or white rectangle). The shell borrows the root window for the
-  wheel (undecorated, always on top, resized and recentred) and restores the
-  settings geometry afterwards. Keep the app transparent in `NativeOptions` and
-  return an alpha-0 `clear_color`.
+- The wheel borrows the root window when the overlay opens: the root viewport is
+  resized to 380×380, stripped of decorations and raised to always-on-top. The
+  wgpu renderer clears with alpha=0, so pixels outside the wheel circle are fully
+  transparent. No secondary viewport is used — wgpu does not alpha-composite
+  secondary viewports on Windows.
 - Volume via `enigo` media keys; scroll via `enigo` wheel. Brightness uses
   `enigo` brightness keys, which only exist on macOS in 0.6.1; report the action
   as unavailable elsewhere instead of adding platform audio/display code.
-- Do not add platform-specific audio code unless `enigo` proves insufficient.
 - The app must stay usable with no knob configured: settings and tray still work.
 
 ## Conventions
@@ -133,7 +131,7 @@ CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu.
 - UI strings only via `TextKey` + `TRANSLATIONS`; never hardcode French or English
   prose in UI modules. The `translations_do_not_expose_developer_vocabulary` test
   enforces a blocklist; extend it when a new internal term appears.
-- The UI bundles Inter in `assets/fonts`; keep `OFL.txt` with it and prefer bundled
+- The UI bundles Rubik in `assets/fonts`; keep `OFL.txt` with it and prefer bundled
   assets over runtime system-font discovery.
 - Keep the UI compact and professional: buttons, combo boxes and status chips share
   `theme::CONTROL_HEIGHT` (currently 32 px) and small radii. Status chips are

@@ -1,0 +1,113 @@
+//! Settings window lifecycle for the gpui shell.
+//!
+//! gpui has no hide/show API, so close-to-tray works by removing the window
+//! (`QuitMode::Explicit` keeps the app alive) and recreating it on tray Show.
+
+use crate::core::APP_ID;
+use gpui::prelude::*;
+use gpui::{
+    App, Context, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, px, size,
+};
+
+use super::shell::{SettingsView, Shared};
+
+/// Window options for the settings shell.
+pub fn settings_window_options() -> WindowOptions {
+    WindowOptions {
+        titlebar: Some(TitlebarOptions {
+            title: Some(SharedString::from("Wheelie")),
+            ..Default::default()
+        }),
+        window_min_size: Some(size(px(960.0), px(620.0))),
+        app_id: Some(APP_ID.to_owned()),
+        ..Default::default()
+    }
+}
+
+/// Opens the settings window unless it is already open.
+pub fn open_settings(cx: &mut App, shared: &Shared) {
+    if shared.borrow().settings_window.is_some() {
+        return;
+    }
+
+    let options = {
+        let state = shared.borrow();
+        let mut options = settings_window_options();
+        // Restore the last size after a close-to-tray recreate.
+        if let Some(bounds) = state.settings_bounds {
+            options.window_bounds = Some(WindowBounds::Windowed(bounds));
+        }
+        options
+    };
+
+    let close_shared = shared.clone();
+    let handle = cx
+        .open_window(options, move |window, cx| {
+            register_close_behavior(window, cx, &close_shared);
+            let view_shared = close_shared.clone();
+            cx.new(move |_: &mut Context<SettingsView>| SettingsView {
+                shared: view_shared,
+            })
+        })
+        .expect("open settings window");
+
+    shared.borrow_mut().settings_window = Some(handle);
+}
+
+/// Closes the settings window if open (used when quitting).
+pub fn close_settings(cx: &mut App, shared: &Shared) {
+    let handle = shared.borrow_mut().settings_window.take();
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+    }
+}
+
+/// Brings the settings window to the front, recreating it when needed.
+pub fn focus_settings(cx: &mut App, shared: &Shared) {
+    open_settings(cx, shared);
+    let handle = shared.borrow().settings_window;
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+        cx.activate(false);
+    }
+}
+
+/// Clears handles of windows the user closed, remembering the last size.
+pub fn reap_closed(cx: &mut App, shared: &Shared) {
+    let mut state = shared.borrow_mut();
+    if let Some(handle) = &state.settings_window {
+        match handle.update(cx, |_, window, _| window.window_bounds()) {
+            Ok(bounds) => {
+                if let WindowBounds::Windowed(bounds) = bounds {
+                    state.settings_bounds = Some(bounds);
+                }
+            }
+            Err(_) => {
+                state.settings_window = None;
+            }
+        }
+    }
+}
+
+/// Repaints the settings view so shared-state changes show up.
+pub fn notify_settings(cx: &mut App, shared: &Shared) {
+    let handle = shared.borrow().settings_window;
+    if let Some(handle) = handle {
+        let _ = handle.update(cx, |_, _, cx| cx.notify());
+    }
+}
+
+/// Close semantics: hide-to-tray by default; quit the app when the tray is off.
+fn register_close_behavior(window: &mut Window, cx: &mut App, shared: &Shared) {
+    let close_shared = shared.clone();
+    window.on_window_should_close(cx, move |_, cx| {
+        let show_tray = close_shared.borrow().runtime.config().general.show_tray;
+        let quitting = close_shared.borrow().quitting;
+        if !show_tray && !quitting {
+            cx.quit();
+        }
+        // Allowed either way: the window is removed, the app survives when
+        // the tray is on, and tray Show recreates the window.
+        true
+    });
+}

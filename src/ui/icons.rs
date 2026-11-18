@@ -72,7 +72,7 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: SetIcon, color: egui::Co
         rect.center(),
         Align2::CENTER_CENTER,
         glyph(icon),
-        FontId::new(size * 0.95, FontFamily::Proportional),
+        FontId::new(size * 0.95, FontFamily::Name("phosphor".into())),
         color,
     );
 }
