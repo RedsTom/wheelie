@@ -135,6 +135,11 @@ impl RuntimeHandle {
         Ok(())
     }
 
+    /// Records that the first-launch introduction was completed.
+    pub fn complete_onboarding(&self) -> Result<(), AppError> {
+        self.update_config(|config| config.onboarding_complete = true)
+    }
+
     /// Queues an action for the background worker.
     pub fn execute(&self, action: Action) -> Result<(), AppError> {
         self.actions.execute(action)
@@ -416,6 +421,21 @@ mod tests {
             runtime.handle().config().language,
             crate::core::Language::En
         );
+        runtime.shutdown();
+    }
+
+    #[test]
+    fn completing_the_introduction_is_persisted() {
+        let store = temp_store("onboarding");
+        let mut runtime = Runtime::with_store(store.clone()).expect("runtime");
+        assert!(!runtime.handle().config().onboarding_complete);
+
+        runtime
+            .handle()
+            .complete_onboarding()
+            .expect("complete introduction");
+        assert!(store.load().config.onboarding_complete);
+
         runtime.shutdown();
     }
 

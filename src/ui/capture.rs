@@ -5,7 +5,7 @@
 use crate::app::RuntimeHandle;
 use crate::core::{Control, KeyChord, KeyCode, Modifiers};
 use crate::ui::pages::{actions, devices, macros};
-use crate::ui::shell::Shared;
+use crate::ui::shell::{Shared, ShellState};
 use gpui::{App, KeyDownEvent, Window};
 use std::str::FromStr;
 
@@ -30,6 +30,36 @@ pub fn start(window: &mut Window, cx: &mut App, shared: &Shared, target: Capture
         state.page.focus_capture.clone()
     };
     focus.focus(window, cx);
+}
+
+/// Keys that the window cannot report as a normal key press on every platform.
+///
+/// Windows exposes volume and media keys as virtual keys that gpui does not
+/// translate into `KeyDownEvent`. They must be watched globally while a field
+/// waits for a key, then forwarded to that field.
+pub fn capture_only_chords() -> Vec<KeyChord> {
+    [
+        KeyCode::VolumeUp,
+        KeyCode::VolumeDown,
+        KeyCode::VolumeMute,
+        KeyCode::MediaPlayPause,
+        KeyCode::MediaNext,
+        KeyCode::MediaPrevious,
+        KeyCode::MediaStop,
+    ]
+    .into_iter()
+    .map(KeyChord::new)
+    .collect()
+}
+
+/// Records a chord delivered by the global key watcher while a field waits.
+/// Returns true when the chord was used.
+pub fn record_chord(state: &mut ShellState, chord: KeyChord) -> bool {
+    if state.capture.is_none() {
+        return false;
+    }
+    state.capture_pending = Some(chord);
+    true
 }
 
 /// Whether `target` is the capture in progress, and the text of its key chip:
@@ -76,7 +106,7 @@ pub fn handle_key(shared: &Shared, event: &KeyDownEvent) -> bool {
             meta: held.platform,
         },
     );
-    shared.borrow_mut().capture_pending = Some(chord);
+    record_chord(&mut shared.borrow_mut(), chord);
     true
 }
 
@@ -111,5 +141,36 @@ fn apply(shared: &Shared, runtime: &RuntimeHandle, target: CaptureTarget, chord:
         CaptureTarget::MacroStep { name, index } => {
             macros::capture_chord(runtime, &name, index, chord);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_only_chords_cover_system_keys() {
+        let chords = capture_only_chords();
+        for key in [
+            KeyCode::VolumeUp,
+            KeyCode::VolumeDown,
+            KeyCode::VolumeMute,
+            KeyCode::MediaPlayPause,
+            KeyCode::MediaNext,
+            KeyCode::MediaPrevious,
+            KeyCode::MediaStop,
+        ] {
+            assert!(
+                chords.contains(&KeyChord::new(key)),
+                "missing capture chord for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn capture_only_chords_leave_regular_keys_to_the_window() {
+        let chords = capture_only_chords();
+        assert!(!chords.contains(&KeyChord::new(KeyCode::F13)));
+        assert!(!chords.contains(&KeyChord::new(KeyCode::KeyA)));
     }
 }

@@ -206,6 +206,8 @@ pub const BRIGHTNESS_SET_ID: &str = "brightness";
 pub const SCROLL_SET_ID: &str = "scroll";
 /// Identifier of the default horizontal scroll set.
 pub const SCROLL_HORIZONTAL_SET_ID: &str = "scroll-horizontal";
+/// Identifier of the default media set.
+pub const MEDIA_SET_ID: &str = "media";
 /// Identifier of the default "no action" set.
 pub const NONE_SET_ID: &str = "none";
 
@@ -237,6 +239,7 @@ pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<Actio
         direction: VolumeDirection::Up,
         steps: 1,
     };
+    volume.actions.press = Action::Mute;
 
     let mut sets = vec![volume];
 
@@ -272,6 +275,7 @@ pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<Actio
     };
     sets.push(scroll);
     sets.push(horizontal_scroll_set(language));
+    sets.push(media_set(language));
     sets.push(none_set(language));
 
     sets
@@ -296,6 +300,48 @@ pub fn is_default_brightness_set(set: &ActionSet) -> bool {
                 steps: 1,
             })
         && set.actions.press == Action::None
+}
+
+/// True when `set` is the volume set shipped before press muted by default.
+///
+/// Used to add the mute action to an untouched set while preserving any set the
+/// user customized.
+pub fn is_legacy_default_volume_set(set: &ActionSet) -> bool {
+    use crate::core::action::{Action, VolumeDirection};
+
+    set.id == VOLUME_SET_ID
+        && set.actions.left
+            == (Action::Volume {
+                direction: VolumeDirection::Down,
+                steps: 1,
+            })
+        && set.actions.right
+            == (Action::Volume {
+                direction: VolumeDirection::Up,
+                steps: 1,
+            })
+        && set.actions.press == Action::None
+}
+
+/// Media set, also used when upgrading older documents.
+pub fn media_set(language: Language) -> ActionSet {
+    use crate::core::action::{Action, MediaCommand};
+
+    let mut set = ActionSet::new(
+        MEDIA_SET_ID,
+        tr(language, TextKey::SetMedia),
+        SetIcon::Media,
+    );
+    set.actions.left = Action::Media {
+        command: MediaCommand::Previous,
+    };
+    set.actions.right = Action::Media {
+        command: MediaCommand::Next,
+    };
+    set.actions.press = Action::Media {
+        command: MediaCommand::PlayPause,
+    };
+    set
 }
 
 /// Horizontal scroll set, also used when upgrading older documents.
@@ -323,32 +369,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_sets_cover_volume_brightness_and_both_scroll_axes() {
+    fn default_sets_cover_volume_brightness_scroll_media_and_none() {
         let sets = default_sets(Language::Fr, true);
-        assert_eq!(sets.len(), 5);
+        assert_eq!(sets.len(), 6);
         assert_eq!(sets[0].id, VOLUME_SET_ID);
         assert_eq!(sets[1].id, BRIGHTNESS_SET_ID);
         assert_eq!(sets[2].id, SCROLL_SET_ID);
         assert_eq!(sets[3].id, SCROLL_HORIZONTAL_SET_ID);
-        assert_eq!(sets[4].id, NONE_SET_ID);
+        assert_eq!(sets[4].id, MEDIA_SET_ID);
+        assert_eq!(sets[5].id, NONE_SET_ID);
         assert_eq!(sets[0].name, "Volume");
         assert_eq!(sets[1].name, "Luminosité");
         assert_eq!(sets[2].name, "Défilement");
         assert_eq!(sets[3].name, "Défilement horizontal");
-        assert_eq!(sets[4].name, "Aucune action");
+        assert_eq!(sets[4].name, "Médias");
+        assert_eq!(sets[5].name, "Aucune action");
         assert_eq!(sets[0].icon, SetIcon::Volume);
         assert_eq!(sets[3].icon, SetIcon::ScrollHorizontal);
-        assert_eq!(sets[4].icon, SetIcon::Prohibit);
+        assert_eq!(sets[4].icon, SetIcon::Media);
+        assert_eq!(sets[5].icon, SetIcon::Prohibit);
     }
 
     #[test]
     fn brightness_set_is_omitted_without_backend_support() {
         let sets = default_sets(Language::En, false);
-        assert_eq!(sets.len(), 4);
+        assert_eq!(sets.len(), 5);
         assert!(sets.iter().all(|set| set.id != BRIGHTNESS_SET_ID));
         assert_eq!(sets[1].id, SCROLL_SET_ID);
         assert_eq!(sets[2].id, SCROLL_HORIZONTAL_SET_ID);
-        assert_eq!(sets[3].id, NONE_SET_ID);
+        assert_eq!(sets[3].id, MEDIA_SET_ID);
+        assert_eq!(sets[4].id, NONE_SET_ID);
+    }
+
+    #[test]
+    fn volume_press_mutes_by_default() {
+        use crate::core::action::Action;
+
+        let volume = &default_sets(Language::En, true)[0];
+        assert_eq!(volume.actions.press, Action::Mute);
+        assert!(!is_legacy_default_volume_set(volume));
+    }
+
+    #[test]
+    fn media_set_maps_the_three_controls_to_transport_actions() {
+        use crate::core::action::{Action, MediaCommand};
+
+        let media = media_set(Language::En);
+        assert_eq!(media.id, MEDIA_SET_ID);
+        assert_eq!(media.icon, SetIcon::Media);
+        assert_eq!(
+            media.actions.left,
+            Action::Media {
+                command: MediaCommand::Previous
+            }
+        );
+        assert_eq!(
+            media.actions.right,
+            Action::Media {
+                command: MediaCommand::Next
+            }
+        );
+        assert_eq!(
+            media.actions.press,
+            Action::Media {
+                command: MediaCommand::PlayPause
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_default_volume_set_is_detected_before_customization() {
+        use crate::core::action::Action;
+
+        let mut legacy = media_set(Language::En);
+        legacy.id = VOLUME_SET_ID.to_owned();
+        legacy.actions.left = Action::Volume {
+            direction: crate::core::action::VolumeDirection::Down,
+            steps: 1,
+        };
+        legacy.actions.right = Action::Volume {
+            direction: crate::core::action::VolumeDirection::Up,
+            steps: 1,
+        };
+        legacy.actions.press = Action::None;
+        assert!(is_legacy_default_volume_set(&legacy));
+
+        legacy.actions.left = Action::Mute;
+        assert!(!is_legacy_default_volume_set(&legacy));
     }
 
     #[test]

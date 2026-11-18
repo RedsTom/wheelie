@@ -11,8 +11,8 @@ use crate::ui::osd_window::Osd;
 use std::time::Instant;
 use tracing::{info, warn};
 
-use super::gestures;
 use super::shell::ShellState;
+use super::{capture, gestures};
 
 /// Drains runtime events into the shell snapshot.
 pub fn drain_events(state: &mut ShellState) {
@@ -70,6 +70,14 @@ pub fn ensure_services(state: &mut ShellState) {
         drop(tray);
         state.tray_failed = false;
     }
+
+    if let Some(tray) = &mut state.tray {
+        let language = state.preferences.language;
+        let window_visible = state.settings_window.is_some();
+        if let Err(error) = tray.set_state(language, window_visible, state.paused) {
+            warn!(%error, "tray menu update failed");
+        }
+    }
 }
 
 /// Keeps the gesture detector aligned with the active profile.
@@ -122,8 +130,13 @@ pub fn apply_hotkeys_if_needed(state: &mut ShellState) {
         return;
     };
 
-    let result = if state.paused || state.capturing {
+    let result = if state.paused {
         service.unregister_all()
+    } else if state.capturing {
+        // The knob keys are released so a pressed key reaches the field.
+        // Volume and media keys still need the global watcher because the
+        // window never receives them as a normal key press on Windows.
+        service.apply(&capture::capture_only_chords())
     } else {
         let bindings = state.detector.bindings();
         service.apply(&[bindings.left, bindings.right, bindings.press])
@@ -149,6 +162,15 @@ pub fn poll_hotkeys(state: &mut ShellState) {
     let events = discard_injected(events, &state.injection);
 
     if events.is_empty() {
+        return;
+    }
+
+    if state.capture.is_some() {
+        for event in events {
+            if let crate::core::InputEvent::Pressed(chord) = event {
+                capture::record_chord(state, chord);
+            }
+        }
         return;
     }
 

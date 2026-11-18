@@ -1,7 +1,9 @@
 //! UI layer: gpui shell plus the legacy eframe views still being ported.
 //!
 //! `run` boots the gpui application (`shell`); `app`, `theme`, `widgets` and
-//! the eframe-typed pages remain until the F4 cleanup removes eframe.
+//! the eframe-typed pages remain until the F4 cleanup removes eframe. The
+//! first-launch introduction lives in the gpui shell and uses the same widgets
+//! as the settings pages.
 
 pub mod app;
 pub mod assets;

@@ -9,6 +9,7 @@ pub(crate) mod actions;
 pub(crate) mod devices;
 mod general;
 pub(crate) mod macros;
+pub(crate) mod onboarding;
 mod settings;
 
 use crate::app::RuntimeState;

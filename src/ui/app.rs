@@ -188,6 +188,12 @@ impl WheelieApp {
             drop(tray);
             self.tray_failed = false;
         }
+
+        if let Some(tray) = &mut self.tray
+            && let Err(error) = tray.set_state(self.preferences.language, !self.hidden, self.paused)
+        {
+            warn!(%error, "tray menu update failed");
+        }
     }
 
     /// Keeps the gesture detector aligned with the active profile.
