@@ -1,8 +1,8 @@
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, IntoElement, Render, Rgba, SharedString,
-    Subscription, Window, deferred, div, px,
+    Anchor, AnyElement, App, ClickEvent, Context, Entity, IntoElement, Render, Rgba, SharedString,
+    Subscription, Window, anchored, deferred, div, px,
 };
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -636,11 +636,16 @@ pub fn capture_buttons(
 }
 
 /// Dropdown menu of `options`; reports the picked index.
+///
+/// The menu is deferred so it paints above its siblings, and anchored so it
+/// flips above the button (and snaps back inside the window) when there is not
+/// enough room below it. `width` must match the button that opens the menu.
 pub fn select_menu(
     id: impl AsRef<str>,
     t: Tokens,
     options: &[String],
     selected: usize,
+    width: f32,
     on_pick: impl Fn(usize, &mut Window, &mut App) + Clone + 'static,
 ) -> impl IntoElement {
     let id = id.as_ref().to_owned();
@@ -689,21 +694,28 @@ pub fn select_menu(
 
     deferred(
         div()
-            .id(format!("{id}-menu"))
+            .id(format!("{id}-menu-anchor"))
             .absolute()
             .top(px(style::CONTROL_HEIGHT + 4.0))
             .left(px(0.0))
-            .w_full()
-            .max_h(px(260.0))
-            .overflow_scroll()
-            .flex()
-            .flex_col()
-            .rounded(px(style::RADIUS_CONTROL))
-            .border_1()
-            .border_color(t.border)
-            .bg(t.card)
-            .shadow_lg()
-            .children(items),
+            .w(px(width))
+            .child(
+                anchored().anchor(Anchor::TopLeft).child(
+                    div()
+                        .id(format!("{id}-menu"))
+                        .w(px(width))
+                        .max_h(px(260.0))
+                        .overflow_scroll()
+                        .flex()
+                        .flex_col()
+                        .rounded(px(style::RADIUS_CONTROL))
+                        .border_1()
+                        .border_color(t.border)
+                        .bg(t.card)
+                        .shadow_lg()
+                        .children(items),
+                ),
+            ),
     )
 }
 

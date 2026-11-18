@@ -129,6 +129,7 @@ fn preferences_card(
                                 t,
                                 &theme_options,
                                 theme_selected,
+                                130.0,
                                 move |index, _, _| {
                                     let mut state = theme_pick.borrow_mut();
                                     state.preferences.theme_mode = ThemeMode::ALL[index];
@@ -168,6 +169,7 @@ fn preferences_card(
                             t,
                             &language_options,
                             language_selected,
+                            130.0,
                             move |index, _, _| {
                                 let mut state = language_pick.borrow_mut();
                                 state.preferences.language = Language::ALL[index];

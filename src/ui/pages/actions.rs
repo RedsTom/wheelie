@@ -541,6 +541,7 @@ fn show_control(
                                 t,
                                 &options,
                                 selected,
+                                200.0,
                                 move |index, _, _| {
                                     let choice = choices[index];
                                     with_set_action(
@@ -945,6 +946,7 @@ fn enum_select(
                 t,
                 &options,
                 selected,
+                width,
                 on_pick,
             ))
         })

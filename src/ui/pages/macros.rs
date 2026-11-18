@@ -447,6 +447,7 @@ fn step_row(
         t,
         &kind_options,
         kind_selected,
+        150.0,
         move |pick, _, _| {
             let picked = StepKind::ALL[pick];
             let mut shell = pick_shared.borrow_mut();
@@ -570,6 +571,7 @@ fn step_row(
                 t,
                 &axis_options,
                 axis_selected,
+                110.0,
                 move |pick, _, _| {
                     let picked = if pick == 0 {
                         ScrollAxis::Vertical
@@ -651,6 +653,7 @@ fn step_row(
                 t,
                 &button_options,
                 button_selected,
+                120.0,
                 move |pick, _, _| {
                     let picked = match pick {
                         0 => MouseButton::Left,
