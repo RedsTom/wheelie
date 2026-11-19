@@ -198,7 +198,10 @@ pub fn field_input(
     if entity.read(cx).value() != value {
         entity.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
     }
-    let field = div().when_some(width, |div, width| div.w(px(width)));
+    let field = match width {
+        Some(width) => div().w(px(width)),
+        None => div().flex_1().min_w(px(0.0)),
+    };
     field.child(Input::new(&entity)).into_any_element()
 }
 
@@ -345,6 +348,77 @@ pub fn icon_button(
     tooltip: &str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    icon_button_tinted(id, t, icon, tooltip, t.text, on_click)
+}
+
+/// Compact borderless action whose glyph carries `tone`; pass a transparent
+/// tone to keep the button mounted (reserving space) but invisible.
+pub fn ghost_icon_button(
+    id: impl Into<SharedString>,
+    icon: gpui_icons::LucideIcon,
+    tooltip: &str,
+    tone: Rgba,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let id: SharedString = id.into();
+    Button::new(id)
+        .ghost()
+        .compact()
+        .tooltip(tooltip.to_owned())
+        .on_click(on_click)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(18.0))
+                .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(tone)),
+        )
+}
+
+/// Full-width dashed placeholder button with a leading plus icon, used to
+/// create the next item of a list.
+pub fn dashed_button(
+    id: impl Into<SharedString>,
+    t: Tokens,
+    label: &str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let id: SharedString = id.into();
+    div()
+        .id(id)
+        .w_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap_2()
+        .py(px(11.0))
+        .rounded(px(style::RADIUS_CARD))
+        .border_1()
+        .border_dashed()
+        .border_color(t.border)
+        .text_size(px(13.0))
+        .text_color(t.muted)
+        .cursor_pointer()
+        .hover(|div| div.bg(t.card_hover).text_color(t.text))
+        .child(
+            gpui_icons::lucide(gpui_icons::LucideIcon::Plus)
+                .size(px(15.0))
+                .text_color(t.muted),
+        )
+        .child(label.to_owned())
+        .on_click(on_click)
+}
+
+/// Compact icon-only outlined action with a tinted glyph (e.g. danger).
+pub fn icon_button_tinted(
+    id: impl Into<SharedString>,
+    _t: Tokens,
+    icon: gpui_icons::LucideIcon,
+    tooltip: &str,
+    color: Rgba,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     Button::new(id.into())
         .outline()
         .compact()
@@ -356,7 +430,7 @@ pub fn icon_button(
                 .items_center()
                 .justify_center()
                 .size(px(18.0))
-                .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(t.text)),
+                .child(gpui_icons::lucide(icon).size(px(16.0)).text_color(color)),
         )
 }
 
@@ -536,13 +610,26 @@ pub fn select_button(
     width: f32,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    select_button_with_icon(id, t, None, value, open, Some(width), on_click)
+}
+
+/// Dropdown button with an optional leading icon before the value.
+/// `width` sizes the button; `None` makes it fill the remaining row space.
+pub fn select_button_with_icon(
+    id: &'static str,
+    t: Tokens,
+    icon: Option<gpui_icons::LucideIcon>,
+    value: &str,
+    open: bool,
+    width: Option<f32>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     div()
         .id(id)
         .flex()
         .items_center()
         .justify_between()
         .gap_2()
-        .w(px(width))
         .h(px(style::CONTROL_HEIGHT))
         .px_3()
         .rounded(px(style::RADIUS_CONTROL))
@@ -553,14 +640,27 @@ pub fn select_button(
         .text_color(t.text)
         .cursor_pointer()
         .hover(|this| this.bg(t.card_hover))
+        .when_some(width, |this, width| this.w(px(width)))
+        .when(width.is_none(), |this| this.flex_1().min_w(px(0.0)))
         .child(
             div()
+                .flex()
+                .items_center()
+                .gap_2()
                 .flex_1()
                 .min_w(px(0.0))
                 .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(value.to_owned()),
+                .when_some(icon, |this, icon| {
+                    this.child(gpui_icons::lucide(icon).size(px(15.0)).text_color(t.muted))
+                })
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(value.to_owned()),
+                ),
         )
         .child(
             gpui_icons::lucide(if open {
@@ -636,14 +736,28 @@ pub fn capture_buttons(
 }
 
 /// Dropdown menu of `options`; reports the picked index.
-///
-/// The menu is deferred so it paints above its siblings, and anchored so it
-/// flips above the button (and snaps back inside the window) when there is not
-/// enough room below it. `width` must match the button that opens the menu.
 pub fn select_menu(
     id: impl AsRef<str>,
     t: Tokens,
     options: &[String],
+    selected: usize,
+    width: f32,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + Clone + 'static,
+) -> impl IntoElement {
+    select_menu_items(id, t, options, None, selected, width, on_pick)
+}
+
+/// Dropdown menu whose items can carry a leading icon (one per option).
+///
+/// The menu is deferred so it paints above its siblings, and anchored so it
+/// flips above the button (and snaps back inside the window) when there is not
+/// enough room below it. `width` must match the button that opens the menu.
+#[allow(clippy::too_many_arguments)]
+pub fn select_menu_items(
+    id: impl AsRef<str>,
+    t: Tokens,
+    options: &[String],
+    icons: Option<&[gpui_icons::LucideIcon]>,
     selected: usize,
     width: f32,
     on_pick: impl Fn(usize, &mut Window, &mut App) + Clone + 'static,
@@ -676,10 +790,29 @@ pub fn select_menu(
                 })
                 .child(
                     div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
                         .flex_1()
                         .min_w(px(0.0))
-                        .text_size(px(13.0))
-                        .child(label),
+                        .overflow_hidden()
+                        .when_some(
+                            icons.and_then(|icons| icons.get(index).copied()),
+                            |this, icon| {
+                                this.child(
+                                    gpui_icons::lucide(icon).size(px(14.0)).text_color(t.muted),
+                                )
+                            },
+                        )
+                        .child(
+                            div()
+                                .min_w(px(0.0))
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .text_size(px(13.0))
+                                .child(label),
+                        ),
                 )
                 .when(is_selected, |div| {
                     div.child(
@@ -720,10 +853,14 @@ pub fn select_menu(
 }
 
 /// Bounded number editor: minus button, text field, plus button.
+///
+/// `input_width` sizes the text field; `None` stretches the whole control to
+/// the remaining row space (used by the actions page).
 pub fn number_field(
     id: &str,
     value: impl Into<SharedString>,
     on_delta: impl Fn(i64, &mut Window, &mut App) + Clone + 'static,
+    input_width: Option<f32>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -733,12 +870,13 @@ pub fn number_field(
         .flex()
         .items_center()
         .gap_1()
+        .when(input_width.is_none(), |this| this.flex_1().min_w(px(0.0)))
         .child(stepper_button(
             format!("{id}-minus"),
             gpui_icons::LucideIcon::Minus,
             move |window, cx| minus(-1, window, cx),
         ))
-        .child(field_input(id, "", value, Some(70.0), window, cx))
+        .child(field_input(id, "", value, input_width, window, cx))
         .child(stepper_button(
             format!("{id}-plus"),
             gpui_icons::LucideIcon::Plus,
