@@ -821,7 +821,12 @@ pub fn select_menu_items(
                             .text_color(style::ACCENT),
                     )
                 })
-                .on_click(move |_event, window, cx| on_pick(index, window, cx))
+                .on_click(move |_event, window, cx| {
+                    // A menu floats above the page: never let the click
+                    // reach the controls painted underneath it.
+                    cx.stop_propagation();
+                    on_pick(index, window, cx)
+                })
         })
         .collect::<Vec<_>>();
 
@@ -846,7 +851,10 @@ pub fn select_menu_items(
                         .border_color(t.border)
                         .bg(t.card)
                         .shadow_lg()
-                        .children(items),
+                        .children(items)
+                        // Clicks on the panel margins or the scrollbar must
+                        // not fall through to the widgets below either.
+                        .on_click(|_, _, cx| cx.stop_propagation()),
                 ),
             ),
     )
