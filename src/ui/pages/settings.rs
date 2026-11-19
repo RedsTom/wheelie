@@ -84,12 +84,14 @@ fn preferences_card(
         .runtime
         .start_at_login_enabled()
         .unwrap_or(state.runtime.config().general.start_at_login);
+    let check_updates = state.runtime.config().general.check_updates;
 
     let theme_shared = shared.clone();
     let theme_pick = shared.clone();
     let language_shared = shared.clone();
     let language_pick = shared.clone();
     let login_runtime = state.runtime.clone();
+    let updates_runtime = state.runtime.clone();
 
     controls::card(
         "settings-preferences",
@@ -199,6 +201,20 @@ fn preferences_card(
                             }
                         }
                         Err(error) => login_runtime.report_error(error.to_string()),
+                    }
+                }),
+            ))
+            .child(div().my(px(6.0)).child(separator(t)))
+            .child(controls::setting_row(
+                "settings-row-updates",
+                t,
+                tr(language, TextKey::UpdateNotifyLabel),
+                tr(language, TextKey::UpdateNotifyDescription),
+                controls::toggle("check-updates", check_updates, move |_checked, _, _| {
+                    if let Err(error) = updates_runtime.update_config(|config| {
+                        config.general.check_updates = !check_updates;
+                    }) {
+                        updates_runtime.report_error(error.to_string());
                     }
                 }),
             )),

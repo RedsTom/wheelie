@@ -87,6 +87,9 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 - [x] Version 0.1.3 (transparent wheel in the root window, wheel preview in the
   actions page, movable sets, "No action" set).
+- [x] Startup release notice: best-effort read of the published GitHub
+  versions, notice card linking to the page of a newer stable release,
+  ignorable per version and switchable off (v0.3.2).
 - [x] Final commit and push.
 - [x] Tags `v0.1.0`, `v0.1.1`, `v0.1.2` and `v0.1.3` (no release artifacts for now).
 

@@ -17,6 +17,7 @@ pub mod key_map;
 pub mod mock;
 pub mod paths;
 pub mod tray;
+pub mod update;
 pub mod volume;
 pub mod window_frame;
 
@@ -31,3 +32,4 @@ pub use instance::InstanceGuard;
 pub use key_map::{to_enigo_key, to_enigo_modifiers, to_global_code, to_global_modifiers};
 pub use paths::{config_dir, data_dir, log_dir};
 pub use tray::{TrayCommand, TrayService};
+pub use update::latest_stable_release;

@@ -112,6 +112,8 @@ Rules:
 - `global-hotkey` 0.10 for exclusive global hotkeys.
 - `enigo` 0.6.1 for cross-platform volume/scroll/key/mouse/text injection.
 - TOML config, versioned, atomic writes.
+- The startup release notice uses `ureq` (blocking, no Tokio) and `semver`;
+  prereleases are never announced in the app.
 - UI FR/EN from v1. All UI prose goes through `wheelie_core::i18n`.
 - GPL-3.0-only, public repo `RedsTom/wheelie`.
 - Tray + optional autostart; closing settings hides to tray.
@@ -130,6 +132,11 @@ Rules:
   makes that set the active one; the wheel never runs an action itself. Knob or
   mouse navigation, Esc closes.
 - Outside the wheel, the three controls run the actions of the active set.
+- At startup, unless notices are off, Wheelie reads the published GitHub
+  releases best-effort (never during the first-launch setup). A newer stable
+  version opens a notice card over the settings that links to the GitHub page
+  for that release; the user can ignore a version or dismiss it for the run.
+  Any feed failure is only logged.
 - Action sets: default volume (press mutes), brightness where supported, both
   scroll sets and media transport; users add sets, name them and pick an icon.
   Actions: volume, brightness, scroll, macro, shortcut, mouse click, media,
