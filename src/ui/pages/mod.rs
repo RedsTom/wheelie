@@ -50,6 +50,10 @@ pub struct PageState {
     pub step_value_fresh: bool,
     /// Currently edited action set (by id).
     pub selected_set: Option<String>,
+    /// Hovered action-set row in the list; drives the reorder buttons.
+    pub hovered_set: Option<String>,
+    /// Hovered macro step row; drives the reorder buttons.
+    pub hovered_step: Option<usize>,
     /// Currently edited macro (by id).
     pub selected_macro: Option<String>,
     /// Currently edited macro step (by index).
@@ -83,6 +87,8 @@ impl PageState {
             step_value: String::new(),
             step_value_fresh: true,
             selected_set: None,
+            hovered_set: None,
+            hovered_step: None,
             selected_macro: None,
             selected_step: None,
             preview_hovered: None,
