@@ -50,6 +50,9 @@ them to the background — and runs your own actions instead.
   for that press, so they can be recorded instead of switching windows. The
   keys go back to the system as soon as the field is confirmed or cancelled.
 - **French and English**, dark and light themes.
+- **Release notices**: at startup Wheelie looks at the stable versions
+  published on GitHub and points you to the release page when a newer one
+  exists. Ignorable per version, and switchable off in the settings.
 - **Portable and installed builds** for every platform, built automatically for
   each release.
 

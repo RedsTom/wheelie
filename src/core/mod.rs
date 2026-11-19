@@ -15,6 +15,7 @@ pub mod macro_engine;
 pub mod platform;
 pub mod profile;
 pub mod theme;
+pub mod update;
 pub mod wheel;
 
 pub use action::{Action, MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
@@ -30,4 +31,5 @@ pub use macro_engine::{MacroDefinition, MacroSink, MacroStep, run_macro};
 pub use platform::{CaptureMode, PlatformInfo};
 pub use profile::{Actions, Profile};
 pub use theme::ThemeMode;
+pub use update::{Release, is_update_available, should_notify};
 pub use wheel::WheelGeometry;

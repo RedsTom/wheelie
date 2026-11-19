@@ -59,6 +59,12 @@ pub struct GeneralConfig {
     /// Color theme.
     #[serde(default)]
     pub theme: ThemeMode,
+    /// Look for newly published versions when Wheelie starts.
+    #[serde(default = "default_true")]
+    pub check_updates: bool,
+    /// Release tag the user chose to ignore, e.g. `v0.3.2`.
+    #[serde(default)]
+    pub ignored_update: Option<String>,
 }
 
 impl Default for GeneralConfig {
@@ -69,6 +75,8 @@ impl Default for GeneralConfig {
             double_click_ms: default_double_click_ms(),
             rotation_debounce_ms: default_rotation_debounce_ms(),
             theme: ThemeMode::default(),
+            check_updates: true,
+            ignored_update: None,
         }
     }
 }
@@ -493,6 +501,23 @@ mod tests {
 
         let parsed = Config::from_toml_str(&document).expect("deserialize");
         assert!(parsed.onboarding_complete);
+    }
+
+    #[test]
+    fn documents_without_update_fields_stay_upward_compatible() {
+        let document = Config::default()
+            .to_toml_string()
+            .expect("serialize")
+            .lines()
+            .filter(|line| {
+                !line.starts_with("check_updates") && !line.starts_with("ignored_update")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let parsed = Config::from_toml_str(&document).expect("deserialize");
+        assert!(parsed.general.check_updates);
+        assert_eq!(parsed.general.ignored_update, None);
     }
 
     #[test]

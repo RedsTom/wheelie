@@ -254,6 +254,13 @@ pub enum TextKey {
     OnboardingBack,
     OnboardingNext,
     OnboardingFinish,
+    UpdateNotifyLabel,
+    UpdateNotifyDescription,
+    UpdateAvailableTitle,
+    UpdateAvailableBody,
+    UpdateOpenAction,
+    UpdateIgnoreAction,
+    UpdateLaterAction,
 }
 
 impl TextKey {
@@ -455,6 +462,13 @@ impl TextKey {
         Self::OnboardingBack,
         Self::OnboardingNext,
         Self::OnboardingFinish,
+        Self::UpdateNotifyLabel,
+        Self::UpdateNotifyDescription,
+        Self::UpdateAvailableTitle,
+        Self::UpdateAvailableBody,
+        Self::UpdateOpenAction,
+        Self::UpdateIgnoreAction,
+        Self::UpdateLaterAction,
     ];
 }
 
@@ -1446,6 +1460,41 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::OnboardingFinish,
         fr: "Essayer maintenant",
         en: "Try it now",
+    },
+    Translation {
+        key: TextKey::UpdateNotifyLabel,
+        fr: "Notifications de nouvelle version",
+        en: "New version notifications",
+    },
+    Translation {
+        key: TextKey::UpdateNotifyDescription,
+        fr: "Wheelie consulte les versions publiées sur GitHub au démarrage.",
+        en: "Wheelie looks at the versions published on GitHub when it starts.",
+    },
+    Translation {
+        key: TextKey::UpdateAvailableTitle,
+        fr: "Nouvelle version disponible",
+        en: "A new version is available",
+    },
+    Translation {
+        key: TextKey::UpdateAvailableBody,
+        fr: "La page GitHub de cette version présente les améliorations et les téléchargements.",
+        en: "The GitHub page for this release lists the improvements and the downloads.",
+    },
+    Translation {
+        key: TextKey::UpdateOpenAction,
+        fr: "Voir la page de la version",
+        en: "Open the release page",
+    },
+    Translation {
+        key: TextKey::UpdateIgnoreAction,
+        fr: "Ignorer cette version",
+        en: "Ignore this version",
+    },
+    Translation {
+        key: TextKey::UpdateLaterAction,
+        fr: "Plus tard",
+        en: "Later",
     },
 ];
 
