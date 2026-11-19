@@ -7,6 +7,7 @@
 
 use super::{devices, separator};
 use crate::core::{Language, TextKey, tr};
+use crate::ui::capture;
 use crate::ui::controls;
 use crate::ui::settings::active_profile_index;
 use crate::ui::shell::{OnboardingStep, SettingsView, Shared, ShellState};
@@ -343,13 +344,13 @@ fn footer(t: Tokens, language: Language, shared: &Shared) -> AnyElement {
 
 fn advance(shared: &Shared) {
     let mut state = shared.borrow_mut();
-    clear_capture(&mut state);
+    capture::abandon(&mut state);
     state.onboarding.step = next_step(state.onboarding.step);
 }
 
 fn retreat(shared: &Shared) {
     let mut state = shared.borrow_mut();
-    clear_capture(&mut state);
+    capture::abandon(&mut state);
     state.onboarding.step = previous_step(state.onboarding.step);
 }
 
@@ -362,14 +363,9 @@ fn finish(shared: &Shared) {
     }
 
     let mut state = shared.borrow_mut();
-    clear_capture(&mut state);
+    capture::abandon(&mut state);
     state.onboarding_active = false;
     state.page.open_menu = None;
-}
-
-fn clear_capture(state: &mut ShellState) {
-    state.capture = None;
-    state.capture_pending = None;
 }
 
 fn next_step(step: OnboardingStep) -> OnboardingStep {

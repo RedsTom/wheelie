@@ -43,6 +43,8 @@ each target platform before a release.
       or shows the desktop, and each one is shown as the chosen key.
 - [ ] Confirm or cancel the field: the system shortcuts work again right away,
       including in other applications.
+- [ ] Start a capture, then close or hide the settings window without
+      confirming: the shortcuts are given back as soon as the window is gone.
 - [ ] Press Escape while a field is waiting: the capture stops without waiting
       for a key. Plain Escape and Alt+F4 are never taken over, so a field can
       always be cancelled and a window closed.

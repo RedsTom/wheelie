@@ -118,7 +118,15 @@ pub fn confirm(shared: &Shared) {
 
 /// Drops the pending combination and leaves the capture.
 pub fn cancel(shared: &Shared) {
-    let mut state = shared.borrow_mut();
+    abandon(&mut shared.borrow_mut());
+}
+
+/// Leaves any capture in progress without storing anything.
+///
+/// A field that can no longer be seen must keep the system shortcuts it took
+/// over: while a capture waits, the reserved chords belong to Wheelie, so the
+/// shell gets them back as soon as the settings window closes.
+pub fn abandon(state: &mut ShellState) {
     state.capture = None;
     state.capture_pending = None;
 }
