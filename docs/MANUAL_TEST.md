@@ -38,6 +38,20 @@ each target platform before a release.
 - [ ] In a shortcut field, press Volume Up, Volume Down and Mute: each key is
       shown as the chosen key and the system volume does not change while the
       field is waiting.
+- [ ] In a shortcut field, press Alt+Tab, Alt+Escape, Ctrl+Escape and a Windows
+      chord such as Win+D: none of them switches windows, opens the start menu
+      or shows the desktop, and each one is shown as the chosen key.
+- [ ] Confirm or cancel the field: the system shortcuts work again right away,
+      including in other applications.
+- [ ] Press Escape while a field is waiting: the capture stops without waiting
+      for a key. Plain Escape and Alt+F4 are never taken over, so a field can
+      always be cancelled and a window closed.
+- [ ] Windows lock (Win+L), the secure attention sequence (Ctrl+Alt+Del) and a
+      bare modifier stay with the system on purpose: pressing them during a
+      capture does nothing to Wheelie.
+- [ ] When another tool already owns one of these shortcuts, the field still
+      records every other key; the log names the keys Wheelie could not take
+      over.
 - [ ] Restart Wheelie: the three assignments are still present.
 
 ## Action sets

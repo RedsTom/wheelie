@@ -134,9 +134,18 @@ pub fn apply_hotkeys_if_needed(state: &mut ShellState) {
         service.unregister_all()
     } else if state.capturing {
         // The knob keys are released so a pressed key reaches the field.
-        // Volume and media keys still need the global watcher because the
-        // window never receives them as a normal key press on Windows.
-        service.apply(&capture::capture_only_chords())
+        // Volume, media and shell chords still need the global watcher because
+        // the system consumes them before the window ever sees the press.
+        let refused = service.apply_optional(&capture::capture_only_chords());
+        if !refused.is_empty() {
+            let labels = refused
+                .iter()
+                .map(|chord| chord.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            warn!(keys = %labels, "the system keeps these keys during capture");
+        }
+        Ok(())
     } else {
         let bindings = state.detector.bindings();
         service.apply(&[bindings.left, bindings.right, bindings.press])
