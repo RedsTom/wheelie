@@ -125,3 +125,18 @@ each target platform before a release.
 - [ ] Enable start at login, restart the session: Wheelie starts automatically.
 - [ ] Corrupt `config.toml` by hand, start Wheelie: it starts with defaults, keeps
       `config.toml.bak`, and logs the reason.
+
+## Release notice
+
+- [ ] Run a build older than the newest stable published release: a notice card
+      opens over the settings, naming the version and pointing to its GitHub
+      page. It never appears during the first-launch setup.
+- [ ] Open the release page: the browser shows the GitHub release; the card is
+      gone for this run and comes back after a restart.
+- [ ] Ignore the version, restart: the notice stays hidden and
+      `ignored_update` is recorded in `config.toml`.
+- [ ] Turn **New version notifications** off, restart: no request goes to
+      GitHub and no notice appears.
+- [ ] Disconnect the network, start Wheelie: no notice, no error dialog; the
+      log records that the release feed was unavailable and everything else
+      works.

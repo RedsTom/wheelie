@@ -11,8 +11,8 @@
 
 use crate::app::{RuntimeHandle, RuntimeSnapshot};
 use crate::core::{
-    APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, TextKey, ThemeMode,
-    VERSION, tr,
+    APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, Release, TextKey,
+    ThemeMode, VERSION, should_notify, tr,
 };
 use crate::platform::{GlobalHotkeyService, InjectionGuard};
 use crate::ui::osd_window::{Osd, OsdView};
@@ -20,7 +20,9 @@ use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::{PageState, onboarding};
 use crate::ui::settings::{SettingsTab, UiPreferences};
-use crate::ui::{assets, gestures, osd_window, overlay_window, pages, services, style, window};
+use crate::ui::{
+    assets, gestures, osd_window, overlay_window, pages, services, style, update_popup, window,
+};
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, AsyncApp, Bounds, Context, Hsla, Pixels, QuitMode, Render, Rgba, Window,
@@ -122,6 +124,8 @@ pub struct ShellState {
     pub osd: Option<Osd>,
     /// Open volume indicator window.
     pub osd_window: Option<WindowHandle<OsdView>>,
+    /// Newly published version waiting to be announced in the settings window.
+    pub update_notice: Option<Release>,
 }
 
 /// Overlay window that was hidden but is not yet removed from gpui's map.
@@ -188,6 +192,7 @@ impl ShellState {
             overlay_closing: None,
             osd: None,
             osd_window: None,
+            update_notice: None,
         }
     }
 }
@@ -395,6 +400,11 @@ impl Render for SettingsView {
                 .into_any_element()
         };
 
+        let notice = state.update_notice.clone();
+        let popup_shared = self.shared.clone();
+        let popup_view = cx.entity();
+        let popup_language = state.preferences.language;
+
         div()
             .id("settings-root")
             .size_full()
@@ -405,6 +415,15 @@ impl Render for SettingsView {
             .bg(t.bg)
             .child(body)
             .child(listener)
+            .when_some(notice, |root, release| {
+                root.child(update_popup::modal(
+                    &release,
+                    t,
+                    popup_language,
+                    &popup_shared,
+                    &popup_view,
+                ))
+            })
     }
 }
 
@@ -596,6 +615,35 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
             crate::ui::controls::install_fields(cx, shared.clone());
             sync_kit_theme(shared.borrow().preferences.theme_mode, cx);
             window::open_settings(cx, &shared);
+
+            if shared.borrow().runtime.config().general.check_updates {
+                let notice_shared = shared.clone();
+                cx.spawn(async move |cx: &mut AsyncApp| {
+                    let outcome = cx
+                        .background_executor()
+                        .spawn(async { crate::platform::update::latest_stable_release() })
+                        .await;
+                    match outcome {
+                        Ok(release) => {
+                            cx.update(|app| {
+                                let mut state = notice_shared.borrow_mut();
+                                let ignored = state.runtime.config().general.ignored_update.clone();
+                                if !state.onboarding_active
+                                    && should_notify(&release, VERSION, ignored.as_deref())
+                                {
+                                    info!(tag = %release.tag, "a newer release is available");
+                                    state.update_notice = Some(release);
+                                    if let Some(view) = &state.settings_view {
+                                        view.update(app, |_, cx| cx.notify());
+                                    }
+                                }
+                            });
+                        }
+                        Err(error) => info!(%error, "release feed unavailable"),
+                    }
+                })
+                .detach();
+            }
 
             let tick_shared = shared.clone();
             cx.spawn(async move |cx: &mut AsyncApp| {

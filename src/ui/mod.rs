@@ -21,6 +21,7 @@ pub mod settings;
 pub mod shell;
 pub mod style;
 pub mod theme;
+pub mod update_popup;
 pub mod wheel_paint;
 pub mod widgets;
 pub mod window;
