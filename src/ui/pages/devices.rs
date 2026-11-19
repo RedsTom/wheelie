@@ -24,8 +24,12 @@ pub(crate) fn render(
     let language = state.preferences.language;
 
     let mut page = div()
+        .id("devices-page")
         .flex()
         .flex_col()
+        .flex_1()
+        .min_h(px(0.0))
+        .overflow_scroll()
         .gap(px(8.0))
         .child(controls::page_header(
             t,
