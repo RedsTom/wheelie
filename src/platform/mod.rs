@@ -13,6 +13,7 @@ pub mod info;
 pub mod input;
 pub mod instance;
 pub mod key_map;
+pub mod media_session;
 #[cfg(test)]
 pub mod mock;
 pub mod paths;

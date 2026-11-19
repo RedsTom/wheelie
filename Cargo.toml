@@ -42,7 +42,11 @@ windows = { version = "0.62", features = [
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
+    "Win32_System_WinRT",
     "Win32_UI_WindowsAndMessaging",
+    "Graphics_Imaging",
+    "Media_Control",
+    "Storage_Streams",
 ] }
 
 [build-dependencies]

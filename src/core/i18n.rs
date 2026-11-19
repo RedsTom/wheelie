@@ -123,6 +123,7 @@ pub enum TextKey {
     ActionMediaNext,
     ActionMediaPrevious,
     ActionMediaStop,
+    MediaNoTrack,
     AboutTitle,
     AboutBody,
     AboutSubtitle,
@@ -331,6 +332,7 @@ impl TextKey {
         Self::ActionMediaNext,
         Self::ActionMediaPrevious,
         Self::ActionMediaStop,
+        Self::MediaNoTrack,
         Self::AboutTitle,
         Self::AboutBody,
         Self::AboutSubtitle,
@@ -805,6 +807,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::ActionMediaStop,
         fr: "Arrêter",
         en: "Stop",
+    },
+    Translation {
+        key: TextKey::MediaNoTrack,
+        fr: "Aucune lecture en cours",
+        en: "Nothing is playing",
     },
     Translation {
         key: TextKey::AboutTitle,

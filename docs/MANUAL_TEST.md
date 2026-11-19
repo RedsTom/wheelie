@@ -76,6 +76,16 @@ each target platform before a release.
       again to restore sound.
 - [ ] Make the media set active: left goes to the previous track, right to the
       next track and press toggles play/pause.
+- [ ] On Windows, with a player open (for example Groove Music or a browser
+      tab playing audio): every media command shows a card at the bottom of
+      the screen with the track title, the artist, the cover, a play or pause
+      glyph matching the session and, when the player reports a timeline, a
+      progress bar with the elapsed and total time. While the card is on
+      screen and playback continues, the elapsed time and the bar advance
+      with the track. With nothing playing, the card says the equivalent of
+      "Nothing is playing" in the interface language. The card closes by
+      itself after about five seconds and never steals focus from the
+      foreground window.
 - [ ] Make the scroll set active and turn the knob inside a long document: the
       view scrolls in the expected direction.
 - [ ] On macOS, make the brightness set active and verify brightness changes. On
