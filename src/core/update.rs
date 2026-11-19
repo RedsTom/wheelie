@@ -31,6 +31,16 @@ fn parse_version(text: &str) -> Option<Version> {
     Version::parse(trimmed).ok()
 }
 
+/// True when `tag` names a stable version, e.g. `v0.3.1`, and not a
+/// prerelease such as `v0.3.2-beta.1`.
+///
+/// Feed filtering keys on the tag itself: public betas are published as
+/// regular GitHub releases, and their flags say nothing about their nature.
+/// Unparsable tags are not stable.
+pub fn is_stable_tag(tag: &str) -> bool {
+    parse_version(tag).is_some_and(|version| version.pre.is_empty())
+}
+
 /// True when `candidate` is a stable release strictly newer than `current`.
 ///
 /// Prerelease candidates never count: betas are not announced inside the app.
@@ -63,6 +73,15 @@ mod tests {
 
     fn release(tag: &str) -> Release {
         Release::new(tag, "https://github.com/RedsTom/wheelie/releases")
+    }
+
+    #[test]
+    fn stable_and_prerelease_tags_are_told_apart() {
+        assert!(is_stable_tag("v0.3.1"));
+        assert!(is_stable_tag("0.3.2"));
+        assert!(!is_stable_tag("v0.3.2-beta.1"));
+        assert!(!is_stable_tag("0.4.0-rc.2"));
+        assert!(!is_stable_tag("nightly"));
     }
 
     #[test]

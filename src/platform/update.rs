@@ -2,10 +2,11 @@
 //!
 //! The request is best-effort. It runs off the UI thread, has a short timeout,
 //! and any failure (offline, rate limit, changed payload) is reported so the
-//! caller can log it and move on. Prereleases (public betas) are skipped: only
-//! stable versions are announced inside the app.
+//! caller can log it and move on. Public betas are published as regular
+//! releases; the feed tells them apart by their tag and only ever returns a
+//! stable version.
 
-use crate::core::{Release, VERSION};
+use crate::core::{Release, VERSION, is_stable_tag};
 use crate::platform::error::PlatformError;
 use serde::Deserialize;
 use std::time::Duration;
@@ -22,8 +23,6 @@ struct RawRelease {
     html_url: String,
     #[serde(default)]
     draft: bool,
-    #[serde(default)]
-    prerelease: bool,
 }
 
 /// Fetches the newest published stable release.
@@ -50,7 +49,7 @@ pub fn latest_stable_release() -> Result<Release, PlatformError> {
 
     releases
         .into_iter()
-        .find(|release| !release.draft && !release.prerelease)
+        .find(|release| !release.draft && is_stable_tag(&release.tag_name))
         .map(|release| Release::new(release.tag_name, release.html_url))
         .ok_or_else(|| PlatformError::Other("no published stable release".to_owned()))
 }

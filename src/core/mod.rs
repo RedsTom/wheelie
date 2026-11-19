@@ -31,5 +31,5 @@ pub use macro_engine::{MacroDefinition, MacroSink, MacroStep, run_macro};
 pub use platform::{CaptureMode, PlatformInfo};
 pub use profile::{Actions, Profile};
 pub use theme::ThemeMode;
-pub use update::{Release, is_update_available, should_notify};
+pub use update::{Release, is_stable_tag, is_update_available, should_notify};
 pub use wheel::WheelGeometry;
