@@ -77,13 +77,15 @@ pub enum AppEvent {
     Indicator(Indicator),
 }
 
-/// Level reported after a volume or brightness change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What the UI shows on screen after an action.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Indicator {
     /// System output volume and mute state.
     Volume(crate::platform::volume::Level),
     /// Screen brightness in percent.
     Brightness(u8),
+    /// Media session state after a transport command.
+    Media(crate::platform::media_session::NowPlaying),
 }
 
 /// Cloneable handle used by the UI to observe and control the runtime.

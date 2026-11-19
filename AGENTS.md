@@ -77,8 +77,9 @@ Flow:
   (`.github/workflows/ci.yml`) gates fmt, clippy and tests on every push and PR.
 - **Release**: open a PR `dev` → `main`. Bump the `version` in `Cargo.toml` in
   that PR. After merge, tag `vX.Y.Z` (or `vX.Y.Z-beta.N` for betas) and create
-  the GitHub release; check "pre-release" for betas. Publishing the release
-  triggers CD (`.github/workflows/release.yml`).
+  the GitHub release. Betas are published as normal releases: never tick
+  "pre-release". The in-app update feed tells betas apart by their tag.
+  Publishing the release triggers CD (`.github/workflows/release.yml`).
 - **Hotfix**: when `main` is broken, branch `hotfix/<slug>` from `main`, PR into
   `main`, tag the next patch version, publish, then merge the fix back into `dev`.
 
@@ -113,7 +114,7 @@ Rules:
 - `enigo` 0.6.1 for cross-platform volume/scroll/key/mouse/text injection.
 - TOML config, versioned, atomic writes.
 - The startup release notice uses `ureq` (blocking, no Tokio) and `semver`;
-  prereleases are never announced in the app.
+  betas are named by their tag (`-beta.N`) and are never announced in the app.
 - UI FR/EN from v1. All UI prose goes through `wheelie_core::i18n`.
 - GPL-3.0-only, public repo `RedsTom/wheelie`.
 - Tray + optional autostart; closing settings hides to tray.

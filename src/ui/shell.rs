@@ -124,6 +124,8 @@ pub struct ShellState {
     pub osd: Option<Osd>,
     /// Open volume indicator window.
     pub osd_window: Option<WindowHandle<OsdView>>,
+    /// Whether the open indicator window was sized for media (versus levels).
+    pub osd_window_media: bool,
     /// Newly published version waiting to be announced in the settings window.
     pub update_notice: Option<Release>,
 }
@@ -192,6 +194,7 @@ impl ShellState {
             overlay_closing: None,
             osd: None,
             osd_window: None,
+            osd_window_media: false,
             update_notice: None,
         }
     }

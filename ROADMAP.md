@@ -98,6 +98,11 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 - Profiles are identified by trigger keys, not hardware device IDs.
 - Key assignment uses a picker + test button; automatic capture is phase 2.
 - Native Wayland global capture is not guaranteed.
+- The now-playing popup (title, artist and cover after a media command) reads
+  the Windows system media session (SMTC); macOS and Linux have no equivalent
+  unified session yet, so the popup stays silent there. It also needs the
+  Windows 11 now-playing API and falls back to no popup when a player
+  publishes no metadata.
 - macOS media keys may require extra permissions.
 - Windows elevated windows may ignore injected input.
 - The brightness action relies on the brightness keys exposed by `enigo` 0.6.1,
