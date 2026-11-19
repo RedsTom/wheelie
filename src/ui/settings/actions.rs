@@ -66,18 +66,14 @@ pub fn show(ui: &mut egui::Ui, context: &mut PageContext<'_>) {
 
                 if let Some(index) = selected {
                     if index > 0
-                        && small_icon_button(ui, ph::CARET_LEFT, tr(language, TextKey::MoveSetLeft))
+                        && small_icon_button(ui, ph::CARET_UP, tr(language, TextKey::MoveSetUp))
                     {
                         sets.swap(index, index - 1);
                         selected = Some(index - 1);
                         changed = true;
                     }
                     if index + 1 < sets.len()
-                        && small_icon_button(
-                            ui,
-                            ph::CARET_RIGHT,
-                            tr(language, TextKey::MoveSetRight),
-                        )
+                        && small_icon_button(ui, ph::CARET_DOWN, tr(language, TextKey::MoveSetDown))
                     {
                         sets.swap(index, index + 1);
                         selected = Some(index + 1);

@@ -39,6 +39,9 @@ pub const WARNING: Rgba = rgb(0xF59E0B);
 /// Danger color for errors.
 pub const DANGER: Rgba = rgb(0xF87171);
 
+/// Fully transparent color, used for hidden-but-reserved controls.
+pub const TRANSPARENT: Rgba = rgba(0x00000000);
+
 /// Outer card radius.
 pub const RADIUS_CARD: f32 = 8.0;
 

@@ -34,8 +34,12 @@ pub(crate) fn render(
     let language = state.preferences.language;
 
     div()
+        .id("settings-page")
         .flex()
         .flex_col()
+        .flex_1()
+        .min_h(px(0.0))
+        .overflow_scroll()
         .gap(px(8.0))
         .child(controls::page_header(
             t,

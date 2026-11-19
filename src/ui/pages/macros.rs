@@ -30,8 +30,12 @@ pub(crate) fn render(
     let wide = window.viewport_size().width >= px(720.0);
 
     div()
+        .id("macros-page")
         .flex()
         .flex_col()
+        .flex_1()
+        .min_h(px(0.0))
+        .overflow_scroll()
         .gap(px(8.0))
         .child(controls::page_header(
             t,
@@ -88,7 +92,13 @@ fn macro_column(
                 .px_3()
                 .py(px(7.0))
                 .rounded(px(style::RADIUS_CONTROL))
-                .when(is_selected, |d| d.bg(t.accent_soft))
+                .border_1()
+                .border_color(if is_selected {
+                    style::ACCENT
+                } else {
+                    style::TRANSPARENT
+                })
+                .bg(if is_selected { t.accent_soft } else { t.card })
                 .hover(move |d| if is_selected { d } else { d.bg(t.card_hover) })
                 .cursor_pointer()
                 .child(
@@ -119,10 +129,23 @@ fn macro_column(
         .flex()
         .flex_col()
         .gap_2()
-        .child(controls::icon_text_button(
+        .when(!macros.is_empty(), |column| {
+            column.child(
+                div()
+                    .rounded(px(style::RADIUS_CARD))
+                    .border_1()
+                    .border_color(t.border)
+                    .bg(t.card)
+                    .p(px(6.0))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .children(rows),
+            )
+        })
+        .child(controls::dashed_button(
             "new-macro",
             t,
-            gpui_icons::LucideIcon::Plus,
             tr(language, TextKey::NewMacroButton),
             move |_, window, cx| {
                 window.blur(cx);
@@ -139,20 +162,6 @@ fn macro_column(
                 }
             },
         ))
-        .when(!macros.is_empty(), |column| {
-            column.child(
-                div()
-                    .rounded(px(style::RADIUS_CARD))
-                    .border_1()
-                    .border_color(t.border)
-                    .bg(t.card)
-                    .p(px(8.0))
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .children(rows),
-            )
-        })
 }
 
 // ---------------------------------------------------------------------------
@@ -192,10 +201,12 @@ fn editor_column(
     let del_runtime = state.runtime.clone();
     let target = definition.name.clone();
 
-    let delete = controls::danger_button(
+    let delete = controls::icon_button_tinted(
         "delete-macro",
-        gpui_icons::LucideIcon::Trash2,
+        t,
+        gpui_icons::LucideIcon::Trash,
         tr(language, TextKey::DeleteMacroButton),
+        style::DANGER,
         move |_, window, cx| {
             let dialog_shared = del_shared.clone();
             let dialog_runtime = del_runtime.clone();
@@ -260,7 +271,7 @@ fn editor(
         "macro-name",
         tr(language, TextKey::MacroNameLabel),
         definition.name.as_str(),
-        Some(240.0),
+        None,
         window,
         cx,
     );
@@ -279,7 +290,6 @@ fn editor(
                 &definition.name,
                 index,
                 step,
-                steps.len(),
                 cx,
             )
         })
@@ -324,23 +334,29 @@ fn editor(
     div()
         .flex()
         .flex_col()
-        .gap_2()
+        .gap(px(12.0))
         .child(
-            div().flex().flex_col().gap_2().child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .text_color(t.muted)
-                            .child(tr(language, TextKey::MacroNameLabel)),
-                    )
-                    .child(name_field)
-                    .child(div().flex_1().min_w(px(0.0)))
-                    .child(delete),
-            ),
+            div()
+                .w_full()
+                .flex()
+                .items_end()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .text_color(t.muted)
+                                .child(tr(language, TextKey::MacroNameLabel)),
+                        )
+                        .child(name_field),
+                )
+                .child(delete),
         )
         .child(super::separator(t))
         .child(
@@ -372,7 +388,7 @@ fn editor(
             div()
                 .flex()
                 .flex_col()
-                .gap(px(6.0))
+                .gap(px(8.0))
                 .children(step_rows)
                 .into_any_element()
         })
@@ -389,8 +405,7 @@ fn editor(
                         .text_color(t.text)
                         .child(tr(language, TextKey::AddStepButton)),
                 )
-                .child(div().flex().flex_wrap().gap_2())
-                .children(add_buttons),
+                .child(div().flex().flex_wrap().gap_2().children(add_buttons)),
         )
 }
 
@@ -408,7 +423,6 @@ fn step_row(
     macro_name: &str,
     index: usize,
     step: &MacroStep,
-    step_count: usize,
     cx: &mut App,
 ) -> impl IntoElement + use<> {
     let kind = StepKind::of(step);
@@ -422,12 +436,14 @@ fn step_row(
     let kind_selected = StepKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
 
     let kind_shared = shared.clone();
-    let kind_button = controls::select_button(
+    let kind_icons = StepKind::ALL.iter().map(|k| k.icon()).collect::<Vec<_>>();
+    let kind_button = controls::select_button_with_icon(
         "step-kind",
         t,
+        Some(kind.icon()),
         kind.text(language),
         kind_open,
-        150.0,
+        Some(180.0),
         move |_, window, cx| {
             window.blur(cx);
             let mut shell = kind_shared.borrow_mut();
@@ -442,12 +458,13 @@ fn step_row(
     let pick_shared = shared.clone();
     let pick_runtime = state.runtime.clone();
     let pick_rendered = macro_name.to_owned();
-    let kind_menu = controls::select_menu(
+    let kind_menu = controls::select_menu_items(
         "step-kind",
         t,
         &kind_options,
+        Some(&kind_icons),
         kind_selected,
-        150.0,
+        180.0,
         move |pick, _, _| {
             let picked = StepKind::ALL[pick];
             let mut shell = pick_shared.borrow_mut();
@@ -546,12 +563,16 @@ fn step_row(
             let axis_open = state.page.open_menu.as_deref() == Some("step-axis")
                 && state.page.selected_step == Some(index);
             let axis_shared = shared.clone();
-            let axis_button = controls::select_button(
+            let axis_button = controls::select_button_with_icon(
                 "step-axis",
                 t,
+                Some(match axis {
+                    ScrollAxis::Vertical => gpui_icons::LucideIcon::ArrowUpDown,
+                    ScrollAxis::Horizontal => gpui_icons::LucideIcon::ArrowLeftRight,
+                }),
                 axis_label(language, *axis),
                 axis_open,
-                110.0,
+                Some(140.0),
                 move |_, window, cx| {
                     window.blur(cx);
                     let mut shell = axis_shared.borrow_mut();
@@ -566,12 +587,16 @@ fn step_row(
             let axis_pick_shared = shared.clone();
             let axis_pick_runtime = state.runtime.clone();
             let axis_pick_rendered = macro_name.to_owned();
-            let axis_menu = controls::select_menu(
+            let axis_menu = controls::select_menu_items(
                 "step-axis",
                 t,
                 &axis_options,
+                Some(&[
+                    gpui_icons::LucideIcon::ArrowUpDown,
+                    gpui_icons::LucideIcon::ArrowLeftRight,
+                ]),
                 axis_selected,
-                110.0,
+                140.0,
                 move |pick, _, _| {
                     let picked = if pick == 0 {
                         ScrollAxis::Vertical
@@ -627,12 +652,13 @@ fn step_row(
             let button_open = state.page.open_menu.as_deref() == Some("step-button")
                 && state.page.selected_step == Some(index);
             let button_shared = shared.clone();
-            let select_button = controls::select_button(
+            let select_button = controls::select_button_with_icon(
                 "step-button",
                 t,
+                Some(gpui_icons::LucideIcon::MousePointer),
                 button.label(language),
                 button_open,
-                120.0,
+                Some(150.0),
                 move |_, window, cx| {
                     window.blur(cx);
                     let mut shell = button_shared.borrow_mut();
@@ -648,12 +674,17 @@ fn step_row(
             let pick_shared = shared.clone();
             let pick_runtime = state.runtime.clone();
             let pick_rendered = macro_name.to_owned();
-            let button_menu = controls::select_menu(
+            let button_menu = controls::select_menu_items(
                 "step-button",
                 t,
                 &button_options,
+                Some(&[
+                    gpui_icons::LucideIcon::MousePointer,
+                    gpui_icons::LucideIcon::MousePointer,
+                    gpui_icons::LucideIcon::MousePointer,
+                ]),
                 button_selected,
-                120.0,
+                150.0,
                 move |pick, _, _| {
                     let picked = match pick {
                         0 => MouseButton::Left,
@@ -689,14 +720,24 @@ fn step_row(
         }
     }
 
+    // Row hover only reveals the reorder arrows; the buttons stay mounted so
+    // the row never changes size, same as on the actions page.
+    let hover_shared = shared.clone();
+    let hover_index = index;
+    let tone = if state.page.hovered_step == Some(index) {
+        t.text
+    } else {
+        style::TRANSPARENT
+    };
+
     let up_shared = shared.clone();
     let up_runtime = state.runtime.clone();
     let up_rendered = macro_name.to_owned();
-    let up_button = controls::icon_button(
+    let up_button = controls::ghost_icon_button(
         format!("step-{index}-up"),
-        t,
         gpui_icons::LucideIcon::ArrowUp,
         tr(language, TextKey::MoveStepUpButton),
+        tone,
         move |_, _, _| {
             let name = {
                 let shell = up_shared.borrow();
@@ -729,11 +770,11 @@ fn step_row(
     let down_shared = shared.clone();
     let down_runtime = state.runtime.clone();
     let down_rendered = macro_name.to_owned();
-    let down_button = controls::icon_button(
+    let down_button = controls::ghost_icon_button(
         format!("step-{index}-down"),
-        t,
         gpui_icons::LucideIcon::ArrowDown,
         tr(language, TextKey::MoveStepDownButton),
+        tone,
         move |_, _, _| {
             let name = {
                 let shell = down_shared.borrow();
@@ -766,11 +807,12 @@ fn step_row(
     let remove_shared = shared.clone();
     let remove_runtime = state.runtime.clone();
     let remove_rendered = macro_name.to_owned();
-    let remove_button = controls::icon_button(
+    let remove_button = controls::icon_button_tinted(
         format!("step-{index}-remove"),
         t,
-        gpui_icons::LucideIcon::Trash2,
+        gpui_icons::LucideIcon::Trash,
         tr(language, TextKey::RemoveStepButton),
+        style::DANGER,
         move |_, window, cx| {
             let dialog_shared = remove_shared.clone();
             let dialog_runtime = remove_runtime.clone();
@@ -824,29 +866,26 @@ fn step_row(
 
     div()
         .id(format!("step-row-{index}"))
+        .w_full()
         .flex()
         .items_center()
         .gap_2()
-        .px_3()
-        .py(px(7.0))
-        .rounded(px(style::RADIUS_CONTROL))
+        .px(px(10.0))
+        .py(px(8.0))
+        .rounded(px(style::RADIUS_CARD))
         .border_1()
         .border_color(if state.page.selected_step == Some(index) {
             style::ACCENT
         } else {
             t.border
         })
+        .bg(t.card)
         .child(
             div()
                 .w(px(20.0))
                 .text_size(px(11.0))
                 .text_color(t.muted)
                 .child(format!("{:02}", index + 1)),
-        )
-        .child(
-            gpui_icons::lucide(kind.icon())
-                .size(px(16.0))
-                .text_color(t.muted),
         )
         .child(
             div()
@@ -868,11 +907,20 @@ fn step_row(
             div()
                 .flex()
                 .items_center()
-                .gap_1()
-                .when(index > 0, |d| d.child(up_button))
-                .when(index + 1 < step_count, |d| d.child(down_button))
+                .gap(px(2.0))
+                .flex_none()
+                .child(up_button)
+                .child(down_button)
                 .child(remove_button),
         )
+        .on_hover(move |hovered, _, _| {
+            let mut shell = hover_shared.borrow_mut();
+            if *hovered {
+                shell.page.hovered_step = Some(hover_index);
+            } else if shell.page.hovered_step == Some(hover_index) {
+                shell.page.hovered_step = None;
+            }
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -909,6 +957,7 @@ fn number_editor(
                 }
             });
         },
+        Some(70.0),
         window,
         cx,
     )
