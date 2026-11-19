@@ -36,6 +36,42 @@ impl GlobalHotkeyService {
             registered: HashMap::new(),
         })
     }
+
+    /// Registers the chords one by one and returns the ones the system refused.
+    ///
+    /// A reserved chord may already belong to the desktop shell, to another
+    /// tool the user runs, or to a lock no application is allowed to replace.
+    /// Refusing one of them must not stop every other key from reaching the
+    /// field that waits, so failures are collected instead of aborting the
+    /// batch.
+    pub fn apply_optional(&mut self, chords: &[KeyChord]) -> Vec<KeyChord> {
+        let mut refused = Vec::new();
+        if self.unregister_all().is_err() {
+            return chords.to_vec();
+        }
+
+        let mut seen = HashSet::new();
+        for chord in chords {
+            if !seen.insert(*chord) {
+                continue;
+            }
+
+            match to_hotkey(*chord).and_then(|hotkey| self.register_one(hotkey).map(|()| hotkey)) {
+                Ok(hotkey) => {
+                    self.registered.insert(hotkey.id(), (*chord, hotkey));
+                }
+                Err(_) => refused.push(*chord),
+            }
+        }
+
+        refused
+    }
+
+    fn register_one(&mut self, hotkey: HotKey) -> Result<(), PlatformError> {
+        self.manager
+            .register(hotkey)
+            .map_err(|error| PlatformError::Other(error.to_string()))
+    }
 }
 
 impl HotkeySource for GlobalHotkeyService {
@@ -49,9 +85,7 @@ impl HotkeySource for GlobalHotkeyService {
             }
 
             let hotkey = to_hotkey(*chord)?;
-            self.manager
-                .register(hotkey)
-                .map_err(|error| PlatformError::Other(error.to_string()))?;
+            self.register_one(hotkey)?;
             self.registered.insert(hotkey.id(), (*chord, hotkey));
         }
 

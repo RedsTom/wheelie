@@ -32,24 +32,15 @@ pub fn start(window: &mut Window, cx: &mut App, shared: &Shared, target: Capture
     focus.focus(window, cx);
 }
 
-/// Keys that the window cannot report as a normal key press on every platform.
+/// Chords a field can only record through the global key watcher.
 ///
 /// Windows exposes volume and media keys as virtual keys that gpui does not
-/// translate into `KeyDownEvent`. They must be watched globally while a field
-/// waits for a key, then forwarded to that field.
+/// translate into `KeyDownEvent`, and the desktop shell answers its own
+/// shortcuts (Alt+Tab, the launcher, the Windows chords) before the focused
+/// window ever sees them. While a field waits, those chords are taken over
+/// globally so the press reaches the field instead of the system.
 pub fn capture_only_chords() -> Vec<KeyChord> {
-    [
-        KeyCode::VolumeUp,
-        KeyCode::VolumeDown,
-        KeyCode::VolumeMute,
-        KeyCode::MediaPlayPause,
-        KeyCode::MediaNext,
-        KeyCode::MediaPrevious,
-        KeyCode::MediaStop,
-    ]
-    .into_iter()
-    .map(KeyChord::new)
-    .collect()
+    KeyChord::system_reserved()
 }
 
 /// Records a chord delivered by the global key watcher while a field waits.
@@ -127,7 +118,15 @@ pub fn confirm(shared: &Shared) {
 
 /// Drops the pending combination and leaves the capture.
 pub fn cancel(shared: &Shared) {
-    let mut state = shared.borrow_mut();
+    abandon(&mut shared.borrow_mut());
+}
+
+/// Leaves any capture in progress without storing anything.
+///
+/// A field that can no longer be seen must keep the system shortcuts it took
+/// over: while a capture waits, the reserved chords belong to Wheelie, so the
+/// shell gets them back as soon as the settings window closes.
+pub fn abandon(state: &mut ShellState) {
     state.capture = None;
     state.capture_pending = None;
 }
@@ -168,9 +167,42 @@ mod tests {
     }
 
     #[test]
+    fn capture_only_chords_take_over_shell_shortcuts() {
+        use crate::core::key::Modifiers;
+
+        let with = |key, modifiers: Modifiers| KeyChord::with_modifiers(key, modifiers);
+        let chords = capture_only_chords();
+
+        assert!(
+            chords.contains(&with(
+                KeyCode::Tab,
+                Modifiers {
+                    alt: true,
+                    ..Default::default()
+                }
+            )),
+            "Alt+Tab must be recorded, not switch windows"
+        );
+        assert!(
+            chords.contains(&with(
+                KeyCode::KeyD,
+                Modifiers {
+                    meta: true,
+                    ..Default::default()
+                }
+            )),
+            "the show-desktop chord must be recorded"
+        );
+    }
+
+    #[test]
     fn capture_only_chords_leave_regular_keys_to_the_window() {
         let chords = capture_only_chords();
         assert!(!chords.contains(&KeyChord::new(KeyCode::F13)));
         assert!(!chords.contains(&KeyChord::new(KeyCode::KeyA)));
+        assert!(
+            !chords.contains(&KeyChord::new(KeyCode::Escape)),
+            "Escape must always cancel the field"
+        );
     }
 }

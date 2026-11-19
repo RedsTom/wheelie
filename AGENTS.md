@@ -141,6 +141,12 @@ Rules:
 
 - `global-hotkey` is exclusive but X11-only on Linux. Native Wayland cannot be
   captured by a normal app; show a warning and treat it as best-effort.
+- While a key field waits, the chords the system keeps for itself
+  (`KeyChord::system_reserved()`: Alt+Tab and the other shell chords, volume and
+  media keys) are taken over globally so the field can record them. Registration
+  is best-effort: the shell, another tool or a lock may refuse a chord, and a
+  refusal is logged, never shown as an error. Plain Escape and Alt+F4 stay
+  uncaptured so a field can always be cancelled and a window closed.
 - macOS may require Accessibility/Input Monitoring for media keys (CGEvent tap).
   Provide onboarding, never assume permission.
 - Windows UIPI: a non-elevated process cannot send input to elevated windows.

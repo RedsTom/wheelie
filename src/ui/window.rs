@@ -10,6 +10,7 @@ use gpui::{
     size,
 };
 
+use super::capture;
 use super::shell::{SettingsView, Shared};
 
 /// Initial window size, 16:9.
@@ -73,6 +74,7 @@ pub fn close_settings(cx: &mut App, shared: &Shared) {
     let mut state = shared.borrow_mut();
     let handle = state.settings_window.take();
     state.settings_view = None;
+    capture::abandon(&mut state);
     drop(state);
     if let Some(handle) = handle {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -102,6 +104,7 @@ pub fn reap_closed(cx: &mut App, shared: &Shared) {
             Err(_) => {
                 state.settings_window = None;
                 state.settings_view = None;
+                capture::abandon(&mut state);
             }
         }
     }

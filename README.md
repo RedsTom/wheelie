@@ -45,6 +45,10 @@ them to the background — and runs your own actions instead.
 - **Tray + autostart**: closing the window hides Wheelie to the tray; the menu
   only shows what applies right now. Optionally start at login, single-instance
   guaranteed.
+- **Any key can be assigned**: while a field waits for a key, Wheelie takes the
+  system's own shortcuts (Alt+Tab, the desktop chords, volume and media keys)
+  for that press, so they can be recorded instead of switching windows. The
+  keys go back to the system as soon as the field is confirmed or cancelled.
 - **French and English**, dark and light themes.
 - **Portable and installed builds** for every platform, built automatically for
   each release.

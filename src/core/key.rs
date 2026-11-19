@@ -249,6 +249,65 @@ impl KeyChord {
     pub fn matches(self, other: Self) -> bool {
         self.key == other.key && self.modifiers == other.modifiers
     }
+
+    /// Chords the operating system keeps for itself: window switching, the
+    /// launcher and desktop shortcuts, volume and media transport.
+    ///
+    /// The system consumes a reserved chord before any window sees it, so a
+    /// field that waits for a key can only record it by taking the chord over
+    /// globally while the user presses it.
+    ///
+    /// Chords no application may take (the Windows lock, the secure attention
+    /// sequence, a bare modifier) are left out on purpose: they stay with the
+    /// operating system. Plain Escape is left out too, so a field can always be
+    /// cancelled, and plain Alt+F4 so a window can still be closed.
+    pub fn system_reserved() -> Vec<Self> {
+        const ALT: Modifiers = Modifiers {
+            control: false,
+            alt: true,
+            shift: false,
+            meta: false,
+        };
+        const CONTROL: Modifiers = Modifiers {
+            control: true,
+            alt: false,
+            shift: false,
+            meta: false,
+        };
+        const META: Modifiers = Modifiers {
+            control: false,
+            alt: false,
+            shift: false,
+            meta: true,
+        };
+
+        // Volume and media transport go to the system mixer or the media
+        // session, never to the focused window.
+        let media = [
+            KeyCode::VolumeUp,
+            KeyCode::VolumeDown,
+            KeyCode::VolumeMute,
+            KeyCode::MediaPlayPause,
+            KeyCode::MediaNext,
+            KeyCode::MediaPrevious,
+            KeyCode::MediaStop,
+        ]
+        .map(Self::new);
+
+        // Chords the desktop shell answers before the window does.
+        let shell = [
+            (ALT, KeyCode::Tab),
+            (ALT, KeyCode::Escape),
+            (CONTROL, KeyCode::Escape),
+            (META, KeyCode::Tab),
+            (META, KeyCode::Space),
+            (META, KeyCode::KeyD),
+            (META, KeyCode::KeyE),
+        ]
+        .map(|(modifiers, key)| Self::with_modifiers(key, modifiers));
+
+        media.into_iter().chain(shell).collect()
+    }
 }
 
 impl From<KeyCode> for KeyChord {
@@ -374,6 +433,73 @@ mod tests {
     fn chord_rejects_missing_key() {
         assert!("Ctrl+".parse::<KeyChord>().is_err());
         assert!("Ctrl+NotAKey".parse::<KeyChord>().is_err());
+    }
+
+    #[test]
+    fn system_reserved_covers_switchers_and_media_keys() {
+        let reserved = KeyChord::system_reserved();
+        let alt = |key| {
+            KeyChord::with_modifiers(
+                key,
+                Modifiers {
+                    alt: true,
+                    ..Default::default()
+                },
+            )
+        };
+        let ctrl = |key| {
+            KeyChord::with_modifiers(
+                key,
+                Modifiers {
+                    control: true,
+                    ..Default::default()
+                },
+            )
+        };
+
+        for chord in [
+            KeyChord::new(KeyCode::VolumeUp),
+            KeyChord::new(KeyCode::MediaPlayPause),
+            alt(KeyCode::Tab),
+            alt(KeyCode::Escape),
+            ctrl(KeyCode::Escape),
+        ] {
+            assert!(reserved.contains(&chord), "missing reserved {chord}");
+        }
+    }
+
+    #[test]
+    fn system_reserved_lists_each_chord_once() {
+        let reserved = KeyChord::system_reserved();
+        let unique: std::collections::HashSet<KeyChord> = reserved.iter().copied().collect();
+        assert_eq!(
+            reserved.len(),
+            unique.len(),
+            "a chord is listed twice: {reserved:?}"
+        );
+    }
+
+    #[test]
+    fn system_reserved_leaves_plain_keys_and_cancellation_to_the_app() {
+        let reserved = KeyChord::system_reserved();
+        for chord in [
+            KeyChord::new(KeyCode::Escape),
+            KeyChord::new(KeyCode::Tab),
+            KeyChord::new(KeyCode::KeyA),
+            KeyChord::new(KeyCode::F13),
+            KeyChord::with_modifiers(
+                KeyCode::F4,
+                Modifiers {
+                    alt: true,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            assert!(
+                !reserved.contains(&chord),
+                "{chord} must stay a normal key press"
+            );
+        }
     }
 
     #[test]
