@@ -1,8 +1,10 @@
 //! gpui painting for the radial wheel, shared by the overlay window and the
 //! settings preview.
 //!
-//! Geometry, colors and hit testing mirror the eframe `overlay::paint_wheel`
-//! so the wheel looks and behaves the same after the port.
+//! Geometry, colors and hit testing come from [`crate::core::WheelGeometry`]
+//! and [`crate::ui::wheel`], so the preview and the overlay window draw the
+//! same wheel. The wheel keeps its dark disc in both themes: it floats over
+//! the desktop and must stay readable whatever is behind it.
 
 use crate::core::{ActionSet, WheelGeometry};
 use crate::ui::{iconset, style};
@@ -17,7 +19,7 @@ pub(crate) const HOVER: Rgba = style::rgb(0x262C3A);
 
 /// Geometry for a wheel drawn inside a square of `size` points.
 ///
-/// Matches the eframe overlay: `min(width, height) * 0.78`.
+/// The wheel fills `min(width, height) * 0.78` of its box.
 pub(crate) fn geometry(size: f32) -> WheelGeometry {
     WheelGeometry::from_size(size * 0.78)
 }
@@ -213,7 +215,7 @@ pub(crate) fn children(
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_size(px(16.0))
                             .text_color(white)
-                            .child(crate::ui::overlay::truncate(&set.name, 32)),
+                            .child(crate::ui::wheel::truncate(&set.name, 32)),
                     )
                     .into_any_element(),
             );

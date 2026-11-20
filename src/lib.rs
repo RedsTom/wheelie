@@ -6,7 +6,7 @@
 //! core      pure domain: config, keys, actions, macros, gestures, i18n
 //! platform  operating-system adapters
 //! app       runtime orchestration and services
-//! ui        eframe views and widgets
+//! ui        gpui shell, settings pages and the radial wheel
 //! ```
 //!
 //! Dependency direction is strictly `core → platform → app → ui`. The binary in

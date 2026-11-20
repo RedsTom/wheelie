@@ -1,9 +1,8 @@
 //! Lucide icon lookup for the gpui UI.
 //!
-//! The eframe pages still draw Phosphor glyphs; this module maps the semantic
-//! [`SetIcon`] of an action set to its Lucide equivalent for the gpui port.
-//! Names resolve through `LucideIcon::from_name`, so upstream aliases keep
-//! working; the test below guards the whole table.
+//! This module maps the semantic [`SetIcon`] of an action set to its Lucide
+//! equivalent. Names resolve through `LucideIcon::from_name`, so upstream
+//! aliases keep working; the test below guards the whole table.
 
 use crate::core::SetIcon;
 use gpui::{Rgba, Styled};

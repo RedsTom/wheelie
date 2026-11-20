@@ -1,7 +1,7 @@
 //! OS service wiring for the gpui shell.
 //!
-//! Ported from the eframe shell: tray and hotkey creation/polling run on the
-//! main thread inside the tick, exactly like the old per-frame `update()`.
+//! Tray and hotkey creation/polling run on the main thread inside the tick, so
+//! the platform adapters never have to guess which thread owns them.
 
 use crate::app::action_worker::discard_injected;
 use crate::app::{AppCommand, AppEvent, RuntimeState};

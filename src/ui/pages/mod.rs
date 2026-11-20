@@ -2,8 +2,7 @@
 //!
 //! Each page reads the shared [`ShellState`] and renders from it; mutations
 //! happen in event closures that borrow the shared state and notify the
-//! settings view. The eframe pages in `settings/` stay until their gpui
-//! replacements all land.
+//! settings view.
 
 pub(crate) mod actions;
 pub(crate) mod devices;
@@ -107,7 +106,7 @@ pub fn render(
     window: &mut Window,
     cx: &mut Context<SettingsView>,
 ) -> AnyElement {
-    use crate::ui::settings::SettingsTab;
+    use crate::ui::nav::SettingsTab;
     match state.tab {
         SettingsTab::General => general::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Settings => settings::render(state, shared, window, cx).into_any_element(),
