@@ -1,7 +1,7 @@
 //! Knob gesture handling: detector events to actions and overlay selection.
 //!
-//! Ported from the eframe shell; window operations are absent until the
-//! overlay window lands (F3), so `open_overlay` only updates the state.
+//! `open_overlay` only updates the wheel state; the overlay window itself is
+//! owned by the shell.
 
 use crate::app::RuntimeHandle;
 use crate::core::{Control, GestureEvent};

@@ -195,6 +195,12 @@ impl Config {
         self.profiles.iter().find(|profile| profile.id == id)
     }
 
+    /// Index of the active profile in [`Self::profiles`], when it exists.
+    pub fn active_profile_index(&self) -> Option<usize> {
+        let id = self.active_profile.as_deref()?;
+        self.profiles.iter().position(|profile| profile.id == id)
+    }
+
     /// The active action set, if it exists.
     pub fn active_set(&self) -> Option<&ActionSet> {
         let id = self.active_set.as_deref()?;
@@ -781,6 +787,23 @@ mod tests {
             profile.matches_chord(KeyChord::new(KeyCode::F13)),
             Some(Control::Left)
         );
+    }
+
+    #[test]
+    fn active_profile_index_follows_the_active_id() {
+        let mut config = Config::default();
+        let bindings = config.profiles[0].bindings;
+        config
+            .profiles
+            .push(Profile::new("second", "Second", bindings));
+
+        assert_eq!(config.active_profile_index(), Some(0));
+
+        config.active_profile = Some("second".to_owned());
+        assert_eq!(config.active_profile_index(), Some(1));
+
+        config.active_profile = Some("missing".to_owned());
+        assert_eq!(config.active_profile_index(), None);
     }
 
     #[test]

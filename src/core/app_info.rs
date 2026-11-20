@@ -3,7 +3,7 @@
 /// User-facing application name.
 pub const APP_NAME: &str = "Wheelie";
 
-/// Technical identifier (macOS bundle id, eframe app id, storage keys).
+/// Technical identifier (macOS bundle id, instance lock, storage keys).
 pub const APP_ID: &str = "io.github.redstom.wheelie";
 
 /// Version taken from `Cargo.toml`.

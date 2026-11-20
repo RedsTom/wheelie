@@ -1,8 +1,9 @@
 //! Visual tokens for the gpui settings shell.
 //!
-//! Same palette as the eframe theme (deep slate surfaces, single blue accent)
-//! exposed as plain color values gpui can consume directly. The eframe theme
-//! in `theme.rs` keeps serving the legacy pages until they are ported.
+//! Deep slate surfaces and a single blue accent, exposed as plain color values
+//! gpui can consume directly. `shell::sync_kit_theme` pushes the same palette
+//! into gpui-kit's global theme so kit-backed controls follow the app's
+//! dark/light mode; pages read [`tokens`] for their own painting.
 
 use crate::core::ThemeMode;
 use gpui::Rgba;
@@ -69,7 +70,7 @@ const LIGHT_CARD: Rgba = rgb(0xFFFFFF);
 const LIGHT_CARD_HOVER: Rgba = rgb(0xF8F9FB);
 const LIGHT_BORDER: Rgba = rgb(0xE1E4E9);
 const LIGHT_TEXT: Rgba = rgb(0x171A20);
-const LIGHT_MUTED: Rgba = rgb(0x6E7681);
+const LIGHT_MUTED: Rgba = rgb(0x5F6873);
 const LIGHT_ACCENT_SOFT: Rgba = rgba(0x4B8BFF1F);
 
 /// Color set for one theme mode.
@@ -116,5 +117,74 @@ pub fn tokens(mode: ThemeMode) -> Tokens {
             muted: LIGHT_MUTED,
             accent_soft: LIGHT_ACCENT_SOFT,
         },
+    }
+}
+
+/// Relative luminance of an opaque color (WCAG 2.1).
+#[cfg(test)]
+fn luminance(color: Rgba) -> f32 {
+    let channel = |value: f32| {
+        if value <= 0.03928 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
+}
+
+/// Contrast ratio between two opaque colors (WCAG 2.1), 1.0 to 21.0.
+#[cfg(test)]
+fn contrast(a: Rgba, b: Rgba) -> f32 {
+    let (light, dark) = (luminance(a), luminance(b));
+    let (high, low) = if light >= dark {
+        (light, dark)
+    } else {
+        (dark, light)
+    };
+    (high + 0.05) / (low + 0.05)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ink must stay readable on every surface it is drawn over, in both
+    /// themes: a stale or inverted palette is exactly what made the light theme
+    /// unusable once.
+    #[test]
+    fn every_theme_keeps_its_text_readable() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light] {
+            let t = tokens(mode);
+            for surface in [t.bg, t.card, t.card_hover, t.sidebar] {
+                assert!(
+                    contrast(t.text, surface) >= 4.5,
+                    "{mode:?}: primary text on {surface:?} is too faint"
+                );
+                assert!(
+                    contrast(t.muted, surface) >= 4.5,
+                    "{mode:?}: secondary text on {surface:?} is too faint"
+                );
+            }
+        }
+    }
+
+    /// Surfaces must stay distinguishable from one another, otherwise cards,
+    /// borders and selection read as one flat wash.
+    #[test]
+    fn surfaces_are_distinct_from_the_page() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light] {
+            let t = tokens(mode);
+            assert_ne!(t.bg, t.card, "{mode:?}: card matches the page");
+            assert_ne!(t.card, t.sidebar, "{mode:?}: sidebar matches the card");
+            assert!(
+                contrast(t.bg, t.border) > 1.05,
+                "{mode:?}: border invisible on the page"
+            );
+            assert!(
+                contrast(ACCENT, t.card) >= 3.0,
+                "{mode:?}: accent unusable on a card"
+            );
+        }
     }
 }

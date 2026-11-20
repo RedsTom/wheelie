@@ -9,7 +9,6 @@ use super::{devices, separator};
 use crate::core::{Language, TextKey, tr};
 use crate::ui::capture;
 use crate::ui::controls;
-use crate::ui::settings::active_profile_index;
 use crate::ui::shell::{OnboardingStep, SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
@@ -243,7 +242,7 @@ fn keys_page(state: &ShellState, shared: &Shared, t: Tokens, language: Language)
     if let Some(notice) = super::platform_notice_text(language, state.platform) {
         body = body.child(super::warning(notice));
     }
-    if let Some(index) = active_profile_index(&config) {
+    if let Some(index) = config.active_profile_index() {
         body = body.child(devices::bindings_card(
             state,
             shared,

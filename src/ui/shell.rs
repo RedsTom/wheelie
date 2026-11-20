@@ -1,9 +1,8 @@
 //! gpui application shell for Wheelie.
 //!
 //! Boots the gpui application, owns the settings window and runs the 35 ms
-//! poll tick that replaces the eframe `update()` body: runtime events, OS
-//! services (tray, global keys), gesture detection and repaints. The old
-//! eframe shell in `app.rs` keeps compiling until the port is complete (F4).
+//! poll tick: runtime events, OS services (tray, global keys), gesture
+//! detection, theme sync and repaints.
 //!
 //! Close-to-tray: gpui exposes no window hide, so the settings window is
 //! removed on close and recreated by the tray Show command while
@@ -15,11 +14,11 @@ use crate::core::{
     ThemeMode, VERSION, should_notify, tr,
 };
 use crate::platform::{GlobalHotkeyService, InjectionGuard};
+use crate::ui::nav::{SettingsTab, UiPreferences};
 use crate::ui::osd_window::{Osd, OsdView};
-use crate::ui::overlay::OverlayState;
 use crate::ui::overlay_window::OverlayView;
 use crate::ui::pages::{PageState, onboarding};
-use crate::ui::settings::{SettingsTab, UiPreferences};
+use crate::ui::wheel::OverlayState;
 use crate::ui::{
     assets, gestures, osd_window, overlay_window, pages, services, style, update_popup, window,
 };
@@ -68,6 +67,11 @@ pub struct ShellState {
     pub runtime: RuntimeHandle,
     /// UI language and theme.
     pub preferences: UiPreferences,
+    /// Theme last pushed into gpui-kit's global theme, or `None` when the kit
+    /// theme has never been synced. Every tick compares this with
+    /// [`ShellState::preferences`] so a change made from any page, the tray or
+    /// the configuration reaches the kit-backed controls.
+    pub synced_theme: Option<ThemeMode>,
     /// Selected settings page.
     pub tab: SettingsTab,
     /// First-launch introduction page.
@@ -166,6 +170,7 @@ impl ShellState {
         Self {
             runtime,
             preferences,
+            synced_theme: None,
             tab: SettingsTab::default(),
             onboarding: OnboardingState::default(),
             onboarding_active: !config.onboarding_complete,
@@ -475,14 +480,19 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
         c.background = bg;
         c.foreground = text;
         c.border = border;
-        c.input = border;
+        // Fields read as editable surfaces: the card color, with the hairline
+        // border doing the outlining. Using the border color here painted every
+        // field in light gray, which looked disabled.
+        c.input = card;
         c.ring = accent;
         c.caret = accent;
         c.selection = accent_soft;
         c.accent = accent_soft;
         c.accent_foreground = text;
 
-        c.muted = card_hover;
+        // Kit draws disabled controls, secondary surfaces and table headers from
+        // `muted`; keep it one step away from the card color in both themes.
+        c.muted = h(mix_rgba(t.card, t.border, 0.55));
         c.muted_foreground = muted;
 
         c.popover = card;
@@ -600,6 +610,24 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
     });
 }
 
+/// Pushes the selected theme into gpui-kit when it does not already match.
+///
+/// Kit-backed controls (labels, buttons, inputs, lists) read gpui-kit's global
+/// theme, not [`style::tokens`], so the two must never drift: a stale kit theme
+/// paints light-mode cards with dark-mode ink. The check lives in the shared
+/// state because a theme change happens in a click handler, between two ticks.
+fn sync_theme(shared: &Shared, cx: &mut App) {
+    let state = shared.borrow();
+    if state.synced_theme == Some(state.preferences.theme_mode) {
+        return;
+    }
+    let mode = state.preferences.theme_mode;
+    drop(state);
+
+    sync_kit_theme(mode, cx);
+    shared.borrow_mut().synced_theme = Some(mode);
+}
+
 /// Runs the gpui application. Called from `main` via `ui::run`.
 pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
     gpui_platform::application()
@@ -616,7 +644,7 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
             info!("gpui shell starting");
             let shared: Shared = Rc::new(RefCell::new(ShellState::new(runtime, cx)));
             crate::ui::controls::install_fields(cx, shared.clone());
-            sync_kit_theme(shared.borrow().preferences.theme_mode, cx);
+            sync_theme(&shared, cx);
             window::open_settings(cx, &shared);
 
             if shared.borrow().runtime.config().general.check_updates {
@@ -668,7 +696,6 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
 /// quitting). A pending double-press deadline shortens the sleep so the
 /// 350 ms single-click window resolves on time.
 fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
-    let theme_before = shared.borrow().preferences.theme_mode;
     {
         let mut state = shared.borrow_mut();
         services::drain_events(&mut state);
@@ -676,10 +703,7 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
         services::ensure_services(&mut state);
         services::sync_from_config(&mut state);
     }
-    let theme_after = shared.borrow().preferences.theme_mode;
-    if theme_before != theme_after {
-        sync_kit_theme(theme_after, cx);
-    }
+    sync_theme(shared, cx);
 
     let commands = {
         let mut state = shared.borrow_mut();

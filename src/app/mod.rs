@@ -1,7 +1,7 @@
 //! Application layer for Wheelie.
 //!
 //! This module orchestrates the domain and platform adapters. It must not depend
-//! on eframe or any graphical toolkit: views consume [`RuntimeHandle`] through
+//! on gpui or any graphical toolkit: views consume [`RuntimeHandle`] through
 //! the `ui` module.
 
 pub mod action_worker;

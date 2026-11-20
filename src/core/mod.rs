@@ -1,7 +1,7 @@
 //! Pure domain model for Wheelie.
 //!
-//! This module must stay independent from eframe, operating-system APIs and
-//! file-system side effects. It owns the configuration model, key chords,
+//! This module must stay independent from the toolkit, operating-system APIs
+//! and file-system side effects. It owns the configuration model, key chords,
 //! actions, macros, gesture detection, profiles and wheel geometry.
 
 pub mod action;
