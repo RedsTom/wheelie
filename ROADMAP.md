@@ -22,7 +22,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 ## UI foundation (pre-M1)
 
 - [x] Fluent-inspired dark and light themes.
-- [x] Bundled Inter font with OFL license.
+- [x] Bundled Rubik font with OFL license.
 - [x] Full-height sidebar, cards, large actions and status pills.
 - [x] User-facing FR/EN copy with a developer-vocabulary blocklist test.
 - [x] Empty states for Devices, Actions and Macros.
