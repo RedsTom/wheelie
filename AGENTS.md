@@ -12,11 +12,13 @@ left/right/press. Wheelie captures those keys exclusively and runs its own actio
 
 ## Status
 
-v0.1.0 is complete: foundations, UI shell, pure domain, platform adapters
-(global-hotkey, enigo, autostart, single instance, tray), runtime wiring,
-configuration persistence, settings pages, radial overlay and tests are green on
-Windows, macOS and Ubuntu. `ROADMAP.md` is the authoritative checklist; update it
-when a milestone item lands, and keep `docs/MANUAL_TEST.md` current for checks that
+The 0.4.x line is shipped: foundations, the gpui UI shell (settings pages,
+radial wheel overlay, volume/media indicator), the pure domain, platform
+adapters (global-hotkey, enigo, autostart, single instance, tray), runtime
+wiring, configuration persistence and tests are green on Windows, macOS and
+Ubuntu. The UI toolkit is gpui only: eframe/egui was removed with the F4
+cleanup. `ROADMAP.md` is the authoritative checklist; update it when a
+milestone item lands, and keep `docs/MANUAL_TEST.md` current for checks that
 need a physical knob.
 
 ## Architecture
@@ -24,28 +26,29 @@ need a physical knob.
 One package, layered modules with strict dependency direction:
 
 ```
-src/main.rs       composition root (CLI, logging, runtime, eframe run)
+src/main.rs       composition root (CLI, logging, runtime, gpui run)
 src/lib.rs        module root
-src/assets.rs     embedded logo and icon loading
+src/assets.rs     embedded logo pixels for the tray icon
 src/core/         pure domain: config, keys, actions, macros, gestures,
                   profiles, i18n, wheel geometry
 src/platform/     OS adapters: hotkeys, input simulation, autostart, launch,
                   instance, paths
 src/app/          orchestration: config store, runtime, action worker, tray commands
-src/ui/           eframe only: settings pages, radial overlay, theme, widgets
+src/ui/           gpui only: shell, settings pages, controls, style tokens,
+                  radial wheel and overlays
 ```
 
 The brand mark lives in `assets/logo/` and is the single source of truth: use
 `logo-4x.png` for in-app textures, `logo-2x.png` for window and tray icons, and
 `logo.svg` for documentation. Never redraw the mark in code. The accent color
-`#4B8BFF` in `src/ui/theme.rs` must stay in sync with the logo.
+`#4B8BFF` in `src/ui/style.rs` must stay in sync with the logo.
 
 Rules:
 
 - `core` has no UI, OS or filesystem dependencies; it does not spawn threads or
   use channels. The macro runner only sleeps between steps.
 - `platform` is the only module allowed to call OS APIs.
-- `app` contains business orchestration and no eframe.
+- `app` contains business orchestration and no gpui.
 - `ui` contains no business rules and no OS calls.
 - `src/main.rs` only wires modules; no layout code.
 
@@ -107,8 +110,12 @@ Rules:
 ## Locked decisions
 
 - Rust 1.89, edition 2024.
-- `eframe`/`egui` 0.33.3 with `Renderer::Wgpu`. Do not bump to 0.37 until the toolchain is Rust 1.95.
-- `egui-phosphor` 0.11 for action-set icons; later versions require newer egui.
+- UI toolkit is gpui: `gpui-pre`/`gpui-pre-platform` 0.3.12 with the `gpui-kit`
+  0.10 component library and `gpui-icons` 0.7 (Lucide). eframe, egui and
+  egui-phosphor are gone for good; do not reintroduce a second UI stack.
+- Colors live in `src/ui/style.rs` (`Tokens` + `tokens(mode)`); `ui::shell`
+  pushes the same palette into gpui-kit's global theme. Kit widgets read the
+  kit theme, not `Tokens`, so the two must stay in sync.
 - `tray-icon` 0.24.2. Do not bump to 0.26 until Rust 1.90.
 - `global-hotkey` 0.10 for exclusive global hotkeys.
 - `enigo` 0.6.1 for cross-platform volume/scroll/key/mouse/text injection.
@@ -163,14 +170,13 @@ Rules:
   set an `injecting` guard and the runtime must drain/ignore hotkey events while
   injection is active.
 - The global key service and the tray icon must be created on the thread that runs
-  the window event loop, lazily from the first `update()`. On Linux the tray needs
-  a GTK main loop that eframe does not provide: attempt creation, log failures and
+  the window event loop, lazily from the first poll tick. On Linux the tray needs
+  a GTK main loop the toolkit does not provide: attempt creation, log failures and
   continue without a tray icon, never panic.
-- The wheel borrows the root window when the overlay opens: the root viewport is
-  resized to 380×380, stripped of decorations and raised to always-on-top. The
-  wgpu renderer clears with alpha=0, so pixels outside the wheel circle are fully
-  transparent. No secondary viewport is used — wgpu does not alpha-composite
-  secondary viewports on Windows.
+- The wheel opens as its own transparent gpui window sized 380×380, undecorated
+  and always-on-top, centered on the primary screen; pixels outside the wheel
+  circle stay transparent. gpui has no window hide, so closing the settings
+  window removes it and the tray Show command recreates it.
 - Volume uses each OS audio API (`platform/volume.rs`: Core Audio on Windows,
   `wpctl`/`pactl` on Linux, `osascript` on macOS), never media keys, so a knob
   bound to volume keys does not feed back into itself. Scroll via `enigo` wheel.
@@ -195,9 +201,13 @@ Rules:
 - The UI bundles Rubik in `assets/fonts`; keep `OFL.txt` with it and prefer bundled
   assets over runtime system-font discovery.
 - Keep the UI compact and professional: buttons, combo boxes and status chips share
-  `theme::CONTROL_HEIGHT` (currently 32 px) and small radii. Status chips are
-  disabled `egui::Button`s with an explicit fill; do not hand-roll frames with a
-  different height. Avoid decorative glows, gradients or oversized cards.
+  `style::CONTROL_HEIGHT` (currently 32 px) and small radii. Status chips use the
+  shared controls in `ui::controls`; do not hand-roll frames with a different
+  height. Avoid decorative glows, gradients or oversized cards.
+- gpui-kit widgets read gpui-kit's global theme, and `Label` overrides any color
+  inherited from its parent: always pass `text_color` to the `Label` itself, and
+  keep `ui::shell::sync_kit_theme` in step with `style::tokens` on every theme
+  change. `ui::style` tests guard the contrast of both palettes.
 - Error handling: `thiserror` in libraries, `anyhow` only in the composition root.
 - No Tokio, Tauri, Electron, WebView, kernel driver or virtual HID.
 - Keep `unsafe` out of the codebase unless a platform adapter cannot be implemented
@@ -207,10 +217,13 @@ Rules:
 
 ## Config and data
 
-- Windows: `%APPDATA%\Wheelie\config.toml`
-- Linux: `~/.config/wheelie/config.toml`
-- macOS: `~/Library/Application Support/Wheelie/config.toml`
-- Logs: platform data dir `.../Wheelie/logs/wheelie.log`
+Paths come from `directories::ProjectDirs::from("", "", "Wheelie")`, so the
+configuration lives in a toolkit-independent folder:
+
+- Windows: `%APPDATA%\Wheelie\config\config.toml`, data in `%APPDATA%\Wheelie\data\`
+- Linux: `~/.config/Wheelie/config.toml`, data in `~/.local/share/Wheelie/`
+- macOS: `~/Library/Application Support/Wheelie/config.toml` (shared with data)
+- Logs: `log_dir()` = `<data dir>/logs/wheelie.log`, rotated daily
 - The schema is versioned; unknown fields must not silently break old configs.
 
 ## References
