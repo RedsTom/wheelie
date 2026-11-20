@@ -3,7 +3,6 @@
 use crate::core::{Bindings, Control, KeyChord, Language, TextKey, tr};
 use crate::ui::capture::{self, CaptureTarget};
 use crate::ui::controls;
-use crate::ui::settings::active_profile_index;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
@@ -42,7 +41,7 @@ pub(crate) fn render(
     }
 
     let config = state.runtime.config();
-    if let Some(index) = active_profile_index(&config) {
+    if let Some(index) = config.active_profile_index() {
         let bindings = config.profiles[index].bindings;
         page = page.child(bindings_card(state, shared, t, language, bindings));
     }
@@ -195,7 +194,7 @@ fn edit_chord(
     let mut shell = shared.borrow_mut();
     let runtime = shell.runtime.clone();
     let config = runtime.config();
-    let Some(index) = active_profile_index(&config) else {
+    let Some(index) = config.active_profile_index() else {
         return;
     };
 

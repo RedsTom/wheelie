@@ -88,14 +88,14 @@ settings window with no knob configured.
 
 | Platform | Path |
 | --- | --- |
-| Windows | `%APPDATA%\Wheelie\config.toml` |
-| Linux | `~/.config/wheelie/config.toml` |
+| Windows | `%APPDATA%\Wheelie\config\config.toml` |
+| Linux | `~/.config/Wheelie/config.toml` |
 | macOS | `~/Library/Application Support/Wheelie/config.toml` |
 
 Config writes are atomic; an unreadable file is kept as `config.toml.bak` and
 Wheelie starts from defaults. The schema is versioned: older configurations are
 upgraded in place and unknown fields never break a downgrade path. Logs live in
-the platform data directory under `Wheelie/logs/`.
+the platform data directory under `Wheelie/data/logs/`.
 
 ## Build from source
 
@@ -113,7 +113,7 @@ On Linux, install the GTK/X11/Wayland development packages listed in
 verification follows [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md); the
 development plan lives in [`ROADMAP.md`](ROADMAP.md).
 
-Under the hood: Rust with `eframe`/`egui` (wgpu) and `gpui` components,
+Under the hood: Rust with `gpui` and the `gpui-kit` component library,
 `global-hotkey`, `enigo`, `tray-icon`, `serde` + TOML, bundled Rubik font.
 No Tauri, Electron, WebView, async runtime or kernel driver.
 

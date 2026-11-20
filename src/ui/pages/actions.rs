@@ -1349,7 +1349,7 @@ fn open_icon_dialog(
 }
 
 // ---------------------------------------------------------------------------
-// Pure helpers (mirrored from the eframe page; its tests live there until F4).
+// Pure helpers.
 // ---------------------------------------------------------------------------
 
 /// Static menu ids for one control row.
@@ -1645,9 +1645,8 @@ fn media_label(language: Language, command: MediaCommand) -> &'static str {
     }
 }
 
-/// Static wheel preview above the set list (ported from the eframe page;
-/// geometry uses the full box like the old preview did). Selection and
-/// reordering happen through the list, never on the wheel.
+/// Static wheel preview above the set list: the geometry uses the full box.
+/// Selection and reordering happen through the list, never on the wheel.
 fn preview_box(sets: &[ActionSet], selected: Option<usize>) -> impl IntoElement {
     const BOX: f32 = 300.0;
     let geometry = WheelGeometry::from_size(BOX);

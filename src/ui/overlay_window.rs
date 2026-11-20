@@ -9,8 +9,8 @@
 use crate::core::APP_ID;
 use crate::platform::window_frame;
 use crate::ui::gestures;
-use crate::ui::overlay::{OVERLAY_SIZE, OverlayOutcome};
 use crate::ui::shell::{OverlayClosing, Shared};
+use crate::ui::wheel::{OVERLAY_SIZE, OverlayOutcome};
 use crate::ui::wheel_paint;
 use gpui::prelude::*;
 use gpui::{
@@ -105,8 +105,7 @@ pub(crate) fn sync(cx: &mut App, shared: &Shared) {
             .update(cx, |_, window, _| window.remove_window());
     }
 
-    // Focus-loss close: once the overlay had focus, losing it closes the
-    // wheel (old `viewport().focused` polling in the eframe shell).
+    // Focus-loss close: once the overlay had focus, losing it closes the wheel.
     let focus_state = {
         let state = shared.borrow();
         (state.overlay_window, state.overlay.focused_once)

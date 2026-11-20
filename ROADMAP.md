@@ -22,7 +22,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 ## UI foundation (pre-M1)
 
 - [x] Fluent-inspired dark and light themes.
-- [x] Bundled Inter font with OFL license.
+- [x] Bundled Rubik font with OFL license.
 - [x] Full-height sidebar, cards, large actions and status pills.
 - [x] User-facing FR/EN copy with a developer-vocabulary blocklist test.
 - [x] Empty states for Devices, Actions and Macros.
@@ -53,8 +53,7 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
 
 ## M3 - UI
 
-- [x] Wire the runtime to config, hotkeys, the gesture detector and the action worker.
-- [x] Settings: General, Devices, Actions, Macros, About.
+- [x] Wire the runtime to config, hotkeys, the gesture detector and the action worker.- [x] Settings: General, Devices, Actions, Macros, About.
 - [x] Action sets with names and icons, selected from the wheel (volume with mute
   on press, brightness where supported, vertical and horizontal scroll, media
   transport by default).
@@ -92,6 +91,28 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
   ignorable per version and switchable off (v0.3.2).
 - [x] Final commit and push.
 - [x] Tags `v0.1.0`, `v0.1.1`, `v0.1.2` and `v0.1.3` (no release artifacts for now).
+
+## UI toolkit: gpui migration (F0–F4)
+
+- [x] F0 — spike (`examples/gpui_spike.rs`): transparent wheel window, `canvas`
+  sector painting, tray + global-hotkey on the gpui main thread, close-to-tray
+  with `QuitMode::Explicit`.
+- [x] F1 — gpui shell: settings window lifecycle, sidebar navigation, poll tick,
+  Lucide icons, Rubik fonts and the visual tokens in `src/ui/style.rs`.
+- [x] F2 — shared controls in `src/ui/controls.rs` (cards, rows, pills, selects,
+  switches, fields) on top of gpui-kit.
+- [x] F3 — windows: radial overlay, volume/media indicator (OSD) and the wheel
+  painter moved to gpui.
+- [x] F4 — pages ported (Overview, Devices, Actions, Macros, Settings) with
+  their rules and tests carried over.
+- [x] F4 cleanup (v0.4.1): eframe, egui and egui-phosphor removed from the
+  dependency tree; the legacy eframe shell, theme, widgets, icons, overlay and
+  pages deleted; wheel state moved to `src/ui/wheel.rs`, navigation state to
+  `src/ui/nav.rs`.
+- [x] v0.4.1 — light theme fixed: gpui-kit's theme is re-synced whenever the
+  mode changes, `Label` colors are set explicitly, disabled surfaces and fields
+  use token-derived colors, and `src/ui/style.rs` tests guard text contrast in
+  both palettes.
 
 ## Known v1 limitations
 

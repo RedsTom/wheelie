@@ -131,6 +131,9 @@ each target platform before a release.
 ## Persistence and appearance
 
 - [ ] Switch language to English, restart: the interface stays in English.
+- [ ] Switch the theme to light: page titles, card headings, key buttons,
+      dropdown items and disabled controls stay readable immediately, without a
+      restart. Switch back to dark and check the same pages.
 - [ ] Switch the theme to light, restart: the light theme is kept.
 - [ ] Enable start at login, restart the session: Wheelie starts automatically.
 - [ ] Corrupt `config.toml` by hand, start Wheelie: it starts with defaults, keeps

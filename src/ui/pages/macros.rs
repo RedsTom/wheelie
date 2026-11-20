@@ -981,7 +981,7 @@ fn text_editor(
 }
 
 // ---------------------------------------------------------------------------
-// Pure helpers (mirrored from the eframe page; its tests live there until F4).
+// Pure helpers.
 // ---------------------------------------------------------------------------
 
 /// Clears step/menu/field-arm state after the edited macro changes.
@@ -1102,7 +1102,7 @@ fn chord_mut(step: &mut MacroStep) -> Option<&mut KeyChord> {
     }
 }
 
-/// First free `"<TabMacros> <n>"` name, as in the eframe page.
+/// First free `"<TabMacros> <n>"` name.
 fn unique_macro_name(macros: &[MacroDefinition], language: Language) -> String {
     let base = tr(language, TextKey::TabMacros);
     let mut number = 1;

@@ -224,8 +224,9 @@ pub fn page_header(t: Tokens, title: &str, subtitle: &str) -> impl IntoElement {
             div()
                 .text_size(px(24.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(t.text)
-                .child(Label::new(title.to_owned())),
+                // `Label` paints with the kit foreground unless it is styled
+                // directly: the parent's `text_color` would be ignored.
+                .child(Label::new(title.to_owned()).text_color(t.text)),
         )
         .child(
             div()
@@ -251,8 +252,7 @@ pub fn section_title(
         div()
             .text_size(px(16.0))
             .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(t.text)
-            .child(Label::new(title.to_owned()).id(id)),
+            .child(Label::new(title.to_owned()).id(id).text_color(t.text)),
     );
     if let Some(subtitle) = subtitle {
         root = root.child(
@@ -479,8 +479,7 @@ pub fn empty_state(
             div()
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_size(px(18.0))
-                .text_color(t.text)
-                .child(Label::new(title.to_owned())),
+                .child(Label::new(title.to_owned()).text_color(t.text)),
         )
         .child(
             div()
@@ -527,8 +526,7 @@ pub fn timeline_item(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_size(px(14.0))
-                        .text_color(t.text)
-                        .child(Label::new(title.to_owned())),
+                        .child(Label::new(title.to_owned()).text_color(t.text)),
                 )
                 .child(
                     div()
@@ -565,8 +563,7 @@ pub fn setting_row(
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_size(px(14.0))
-                        .text_color(t.text)
-                        .child(Label::new(title.to_owned()).id(id)),
+                        .child(Label::new(title.to_owned()).id(id).text_color(t.text)),
                 )
                 .child(
                     div()
