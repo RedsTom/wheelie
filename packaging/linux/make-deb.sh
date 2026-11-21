@@ -2,7 +2,7 @@
 # Builds the .deb package for Wheelie from the release binary.
 #
 # Required environment:
-#   VERSION   release version, e.g. 0.4.1-beta.1 (Debian revisions use ~)
+#   VERSION   release version, e.g. 0.4.2-beta.1 (Debian revisions use ~)
 #   BIN       path to the release `wheelie` binary
 #   OUT_DIR   output directory for the artifact
 set -euo pipefail
