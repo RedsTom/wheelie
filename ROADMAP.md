@@ -98,6 +98,8 @@ knob left/right/press in their keyboard software, then assigns them in Wheelie.
   persistence and tests green on Windows, macOS and Ubuntu.
 - [x] v0.4.1 — light theme fixed, eframe/egui removed, CI and CD with eight
   release assets per published tag.
+- [x] v0.4.2 — full 0.4.1 review hardening, stable wheel selection on Windows,
+  headless-safe tests and a hardened release pipeline.
 
 ## UI toolkit: gpui migration (F0–F4)
 
