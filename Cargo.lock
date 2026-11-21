@@ -8261,7 +8261,7 @@ dependencies = [
  "serde",
  "single-instance",
  "thiserror 2.0.21",
- "toml 0.8.23",
+ "toml 1.2.1+spec-1.1.0",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

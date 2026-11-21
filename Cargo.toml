@@ -29,7 +29,7 @@ semver = "1"
 serde = { version = "1", features = ["derive"] }
 single-instance = "0.3.3"
 thiserror = "2"
-toml = "0.8"
+toml = "1.2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
