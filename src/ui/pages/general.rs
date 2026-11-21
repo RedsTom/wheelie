@@ -2,7 +2,7 @@
 
 use super::state_label;
 use crate::app::{AppCommand, RuntimeState};
-use crate::core::{Language, TextKey, WheelGeometry, tr};
+use crate::core::{Language, TextKey, tr};
 use crate::ui::controls;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
@@ -48,7 +48,8 @@ fn runtime_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoE
         RuntimeState::Paused => TextKey::RuntimePausedBody,
         RuntimeState::Stopped => TextKey::RuntimeStoppedBody,
     };
-    let (state_text, state_color) = state_label(language, snapshot.state);
+    let (state_text, state_color) =
+        state_label(language, snapshot.state, state.preferences.theme_mode);
     let stopped = matches!(snapshot.state, RuntimeState::Stopped);
     let resume = matches!(snapshot.state, RuntimeState::Paused);
     let error = snapshot.last_error.clone();
@@ -116,7 +117,11 @@ fn runtime_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoE
                                 )
                                 .into_any_element()
                             })
-                            .child(controls::status_pill(state_text, state_color)),
+                            .child(controls::status_pill(
+                                state_text,
+                                state_color,
+                                state.preferences.theme_mode,
+                            )),
                     ),
             )
             .when_some(error, |section, error| {
@@ -158,11 +163,11 @@ fn wheel_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
         .or(if sets.is_empty() { None } else { Some(0) })
         .unwrap_or(0);
 
-    let geometry = WheelGeometry::from_size(BOX);
+    let geometry = wheel_paint::geometry(BOX);
     let center = point(px(BOX / 2.0), px(BOX / 2.0));
     let origin = wheel_paint::origin(center, &geometry);
     let paint_sets = sets.clone();
-    let title_y = BOX - 8.0;
+    let title_y = wheel_paint::title_y(center, &geometry);
 
     controls::card(
         "overview-wheel",

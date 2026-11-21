@@ -12,7 +12,7 @@ use crate::ui::controls;
 use crate::ui::shell::{OnboardingStep, SettingsView, Shared, ShellState};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Rgba, Window, div, img, px};
+use gpui::{AnyElement, Context, Window, div, img, px};
 
 const LANGUAGE_MENU: &str = "onboarding-language";
 
@@ -116,7 +116,7 @@ fn stepper(t: Tokens, language: Language, current: OnboardingStep) -> AnyElement
                         .justify_center()
                         .size(px(24.0))
                         .rounded_full()
-                        .bg(Rgba { a: 0.16, ..accent })
+                        .bg(style::alpha(accent, 0.16))
                         .text_size(px(11.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(accent)
@@ -218,15 +218,8 @@ fn language_page(state: &ShellState, t: Tokens, language: Language, shared: &Sha
                     start_at_login,
                     move |_checked, _, _| {
                         let enabled = !start_at_login;
-                        match login_runtime.set_start_at_login(enabled) {
-                            Ok(()) => {
-                                if let Err(error) = login_runtime.update_config(|config| {
-                                    config.general.start_at_login = enabled;
-                                }) {
-                                    login_runtime.report_error(error.to_string());
-                                }
-                            }
-                            Err(error) => login_runtime.report_error(error.to_string()),
+                        if let Err(error) = login_runtime.set_start_at_login(enabled) {
+                            login_runtime.report_error(error.to_string());
                         }
                     },
                 ),

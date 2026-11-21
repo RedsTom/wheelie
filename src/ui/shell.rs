@@ -1,8 +1,8 @@
 //! gpui application shell for Wheelie.
 //!
 //! Boots the gpui application, owns the settings window and runs the 35 ms
-//! poll tick: runtime events, OS services (tray, global keys), gesture
-//! detection, theme sync and repaints.
+//! poll tick: runtime events, gesture detection, theme sync and repaints. OS
+//! services are owned by `app`; this module only routes window commands.
 //!
 //! Close-to-tray: gpui exposes no window hide, so the settings window is
 //! removed on close and recreated by the tray Show command while
@@ -13,7 +13,6 @@ use crate::core::{
     APP_NAME, Config, GestureConfig, GestureDetector, Language, PlatformInfo, Release, TextKey,
     ThemeMode, VERSION, should_notify, tr,
 };
-use crate::platform::{GlobalHotkeyService, InjectionGuard};
 use crate::ui::nav::{SettingsTab, UiPreferences};
 use crate::ui::osd_window::{Osd, OsdView};
 use crate::ui::overlay_window::OverlayView;
@@ -88,44 +87,34 @@ pub struct ShellState {
     pub detector: GestureDetector,
     /// Detector configuration, kept in sync with the config.
     pub gesture_config: GestureConfig,
-    /// Injection guard used to drop self-injected keys.
-    pub injection: InjectionGuard,
-    /// Global key watcher.
-    pub hotkeys: Option<GlobalHotkeyService>,
-    /// Watcher creation failed.
-    pub hotkeys_failed: bool,
-    /// Bindings changed; the watcher must re-register.
-    pub hotkeys_dirty: bool,
-    /// Runtime paused or stopped.
-    pub paused: bool,
-    /// Whether the key-capture listener suspended the global keys last tick.
-    pub capturing: bool,
     /// Value waiting for the next key pressed in the settings window.
     pub capture: Option<crate::ui::capture::CaptureTarget>,
     /// Combination detected during the capture, waiting for confirmation.
     pub capture_pending: Option<crate::core::KeyChord>,
     /// Radial wheel selection state (window lands in F3).
     pub overlay: OverlayState,
-    /// Tray icon service.
-    pub tray: Option<crate::platform::TrayService>,
-    /// Language the tray icon was built with.
-    pub tray_language: Language,
-    /// Tray creation failed.
-    pub tray_failed: bool,
     /// Quit requested.
     pub quitting: bool,
+    /// Whether a settings window should be open (tray Show/Hide).
+    pub settings_wanted: bool,
+    /// Throttles retries after a refused settings window open.
+    pub settings_open_retry_at: Option<Instant>,
     /// Open settings window handle.
     pub settings_window: Option<gpui::AnyWindowHandle>,
     /// Root view of the settings window, used to request repaints.
     pub settings_view: Option<gpui::Entity<SettingsView>>,
     /// Last known settings bounds, restored on recreate.
     pub settings_bounds: Option<Bounds<Pixels>>,
+    /// Throttles retries after a refused overlay window open.
+    pub overlay_open_retry_at: Option<Instant>,
     /// Open radial overlay window.
     pub overlay_window: Option<WindowHandle<OverlayView>>,
     /// Overlay window awaiting deferred removal after close.
     pub overlay_closing: Option<OverlayClosing>,
     /// Volume or brightness indicator currently on screen, if any.
     pub osd: Option<Osd>,
+    /// Throttles retries after a refused indicator window open.
+    pub osd_open_retry_at: Option<Instant>,
     /// Open volume indicator window.
     pub osd_window: Option<WindowHandle<OsdView>>,
     /// Whether the open indicator window was sized for media (versus levels).
@@ -149,6 +138,10 @@ pub struct OverlayClosing {
 /// Shared handle type.
 pub type Shared = Rc<RefCell<ShellState>>;
 
+/// Minimum delay between two attempts to open a window that the platform
+/// refused. Failures are logged; the next poll tick tries again.
+pub const WINDOW_OPEN_RETRY: Duration = Duration::from_secs(1);
+
 impl ShellState {
     fn new(runtime: RuntimeHandle, cx: &mut App) -> Self {
         let config = runtime.config();
@@ -165,7 +158,6 @@ impl ShellState {
 
         let snapshot = runtime.snapshot();
         let platform = runtime.platform_info();
-        let injection = runtime.injection_guard();
 
         Self {
             runtime,
@@ -179,25 +171,20 @@ impl ShellState {
             platform,
             detector: GestureDetector::new(bindings, gesture_config),
             gesture_config,
-            injection,
-            hotkeys: None,
-            hotkeys_failed: false,
-            hotkeys_dirty: true,
-            paused: false,
-            capturing: false,
             capture: None,
             capture_pending: None,
             overlay: OverlayState::default(),
-            tray: None,
-            tray_language: preferences.language,
-            tray_failed: false,
             quitting: false,
+            settings_wanted: true,
+            settings_open_retry_at: None,
             settings_window: None,
             settings_view: None,
             settings_bounds: None,
+            overlay_open_retry_at: None,
             overlay_window: None,
             overlay_closing: None,
             osd: None,
+            osd_open_retry_at: None,
             osd_window: None,
             osd_window_media: false,
             update_notice: None,
@@ -209,6 +196,10 @@ impl ShellState {
 pub struct SettingsView {
     /// Shared shell state.
     pub shared: Shared,
+    /// Focus target of the startup release notice.
+    pub update_focus: gpui::FocusHandle,
+    /// Keeps the key-capture focus-loss listener alive for the window.
+    pub focus_out_subscription: Option<gpui::Subscription>,
 }
 
 impl SettingsView {
@@ -282,7 +273,7 @@ impl SettingsView {
                     .mt_3()
                     .text_size(px(10.5))
                     .text_color(t.muted)
-                    .child(format!("v{VERSION} · GPL-3.0")),
+                    .child(format!("v{VERSION} · {}", style::APP_LICENSE)),
             )
     }
 }
@@ -298,8 +289,9 @@ fn nav_item(
 ) -> impl IntoElement {
     let shared = shared.clone();
     let weak = weak.clone();
+    let label = tab.label(language);
     div()
-        .id(tab.label(language))
+        .id(crate::ui::pages::tab_element_id(tab))
         .w_full()
         .flex()
         .items_center()
@@ -313,28 +305,23 @@ fn nav_item(
         .hover(move |div| if selected { div } else { div.bg(t.card_hover) })
         .cursor_pointer()
         .child(
-            gpui_icons::lucide(tab_icon(tab))
+            gpui_icons::lucide(tab.icon())
                 .size(px(15.0))
                 .text_color(if selected { style::ACCENT } else { t.muted }),
         )
-        .child(tab.label(language))
-        .on_click(move |_, _, cx| {
-            shared.borrow_mut().tab = tab;
+        .child(label)
+        .on_click(move |_, window, cx| {
+            let mut state = shared.borrow_mut();
+            state.tab = tab;
+            state.page.open_menu = None;
+            state.page.binding_conflict = None;
+            crate::ui::capture::abandon(&mut state);
+            drop(state);
+            window.blur(cx);
             if let Some(view) = weak.upgrade() {
                 view.update(cx, |_, cx| cx.notify());
             }
         })
-}
-
-/// Drawer icon for one settings tab.
-fn tab_icon(tab: SettingsTab) -> gpui_icons::LucideIcon {
-    match tab {
-        SettingsTab::General => gpui_icons::LucideIcon::LayoutDashboard,
-        SettingsTab::Devices => gpui_icons::LucideIcon::SlidersHorizontal,
-        SettingsTab::Actions => gpui_icons::LucideIcon::Waypoints,
-        SettingsTab::Macros => gpui_icons::LucideIcon::ScrollText,
-        SettingsTab::Settings => gpui_icons::LucideIcon::Settings,
-    }
 }
 
 impl Render for SettingsView {
@@ -412,6 +399,10 @@ impl Render for SettingsView {
         let popup_shared = self.shared.clone();
         let popup_view = cx.entity();
         let popup_language = state.preferences.language;
+        let popup_focus = self.update_focus.clone();
+        if notice.is_some() {
+            popup_focus.focus(window, cx);
+        }
 
         div()
             .id("settings-root")
@@ -430,6 +421,7 @@ impl Render for SettingsView {
                     popup_language,
                     &popup_shared,
                     &popup_view,
+                    &popup_focus,
                 ))
             })
     }
@@ -437,16 +429,6 @@ impl Render for SettingsView {
 
 fn h(c: Rgba) -> Hsla {
     c.into()
-}
-
-fn mix_rgba(a: Rgba, b: Rgba, t: f32) -> Rgba {
-    let t = t.clamp(0.0, 1.0);
-    Rgba {
-        r: a.r + (b.r - a.r) * t,
-        g: a.g + (b.g - a.g) * t,
-        b: a.b + (b.b - a.b) * t,
-        a: a.a + (b.a - a.a) * t,
-    }
 }
 
 /// Syncs gpui-kit's global theme with the application's palette so kit-backed
@@ -470,7 +452,8 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
     let success = h(style::SUCCESS);
     let warning = h(style::WARNING);
     let danger = h(style::DANGER);
-    let on_accent = h(style::rgb(0xFFFFFF));
+    let on_accent = h(style::ON_ACCENT);
+    let hover = h(style::kit_hover(mode));
 
     gpui_kit::component::Theme::update(cx, |theme| {
         theme.radius = px(style::RADIUS_CONTROL);
@@ -492,7 +475,7 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
 
         // Kit draws disabled controls, secondary surfaces and table headers from
         // `muted`; keep it one step away from the card color in both themes.
-        c.muted = h(mix_rgba(t.card, t.border, 0.55));
+        c.muted = h(style::mix(t.card, t.border, 0.55));
         c.muted_foreground = muted;
 
         c.popover = card;
@@ -500,18 +483,18 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
 
         c.primary = accent;
         c.primary_foreground = on_accent;
-        c.primary_hover = h(style::rgb(0x3D79E6));
-        c.primary_active = h(style::rgb(0x2F66CC));
+        c.primary_hover = h(style::PRIMARY_HOVER);
+        c.primary_active = h(style::PRIMARY_ACTIVE);
 
         c.secondary = card_hover;
         c.secondary_foreground = text;
-        c.secondary_hover = h(mix_rgba(t.card_hover, t.border, 0.35));
-        c.secondary_active = h(mix_rgba(t.card_hover, t.border, 0.55));
+        c.secondary_hover = hover;
+        c.secondary_active = h(style::mix(style::kit_hover(mode), t.border, 0.35));
 
         c.button = card;
         c.button_foreground = text;
-        c.button_hover = card_hover;
-        c.button_active = h(mix_rgba(t.card_hover, t.border, 0.25));
+        c.button_hover = hover;
+        c.button_active = h(style::mix(style::kit_hover(mode), t.border, 0.25));
         c.button_primary = accent;
         c.button_primary_foreground = on_accent;
         c.button_primary_hover = c.primary_hover;
@@ -523,26 +506,26 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
 
         c.danger = danger;
         c.danger_foreground = on_accent;
-        c.danger_hover = h(style::rgb(0xDC2626));
-        c.danger_active = h(style::rgb(0xB91C1C));
+        c.danger_hover = h(style::DANGER_HOVER);
+        c.danger_active = h(style::DANGER_ACTIVE);
         c.button_danger = danger;
         c.button_danger_foreground = on_accent;
         c.button_danger_hover = c.danger_hover;
         c.button_danger_active = c.danger_active;
 
         c.success = success;
-        c.success_foreground = h(style::rgb(0x062016));
-        c.success_hover = h(style::rgb(0x10B981));
-        c.success_active = h(style::rgb(0x059669));
+        c.success_foreground = h(style::SUCCESS_FOREGROUND);
+        c.success_hover = h(style::SUCCESS_HOVER);
+        c.success_active = h(style::SUCCESS_ACTIVE);
         c.button_success = success;
         c.button_success_foreground = c.success_foreground;
         c.button_success_hover = c.success_hover;
         c.button_success_active = c.success_active;
 
         c.warning = warning;
-        c.warning_foreground = h(style::rgb(0x2A1600));
-        c.warning_hover = h(style::rgb(0xD97706));
-        c.warning_active = h(style::rgb(0xB45309));
+        c.warning_foreground = h(style::WARNING_FOREGROUND);
+        c.warning_hover = h(style::WARNING_HOVER);
+        c.warning_active = h(style::WARNING_ACTIVE);
         c.button_warning = warning;
         c.button_warning_foreground = c.warning_foreground;
         c.button_warning_hover = c.warning_hover;
@@ -560,13 +543,13 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
         c.group_box = card;
         c.group_box_foreground = text;
         c.list = card;
-        c.list_hover = card_hover;
+        c.list_hover = hover;
         c.list_active = accent_soft;
         c.list_active_border = accent;
         c.list_head = card;
         c.list_even = card;
         c.table = card;
-        c.table_hover = card_hover;
+        c.table_hover = hover;
         c.table_active = accent_soft;
         c.table_active_border = accent;
         c.table_head = card;
@@ -593,19 +576,14 @@ fn sync_kit_theme(mode: ThemeMode, cx: &mut App) {
         c.switch_thumb = on_accent;
         c.slider_bar = accent;
         c.slider_thumb = on_accent;
-        c.scrollbar = h(Rgba { a: 0.0, ..t.bg });
-        c.scrollbar_thumb = h(mix_rgba(t.muted, t.bg, 0.35));
-        c.scrollbar_thumb_hover = h(mix_rgba(t.muted, t.bg, 0.15));
+        c.scrollbar = h(style::alpha(t.bg, 0.0));
+        c.scrollbar_thumb = h(style::mix(t.muted, t.bg, 0.35));
+        c.scrollbar_thumb_hover = h(style::mix(t.muted, t.bg, 0.15));
         c.skeleton = card_hover;
         c.link = accent;
         c.link_hover = c.primary_hover;
         c.link_active = c.primary_active;
-        c.overlay = h(Rgba {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.45,
-        });
+        c.overlay = h(style::MODAL_SCRIM);
         c.window_border = border;
     });
 }
@@ -643,11 +621,16 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
 
             info!("gpui shell starting");
             let shared: Shared = Rc::new(RefCell::new(ShellState::new(runtime, cx)));
-            crate::ui::controls::install_fields(cx, shared.clone());
+            crate::ui::controls::reset_fields(cx);
             sync_theme(&shared, cx);
             window::open_settings(cx, &shared);
 
-            if shared.borrow().runtime.config().general.check_updates {
+            let notices_allowed = {
+                let state = shared.borrow();
+                state.runtime.startup_notices_allowed()
+                    && state.runtime.config().general.check_updates
+            };
+            if notices_allowed {
                 let notice_shared = shared.clone();
                 cx.spawn(async move |cx: &mut AsyncApp| {
                     let outcome = cx
@@ -696,31 +679,30 @@ pub fn run(runtime: RuntimeHandle) -> anyhow::Result<()> {
 /// quitting). A pending double-press deadline shortens the sleep so the
 /// 350 ms single-click window resolves on time.
 fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
-    {
+    let window_commands = {
         let mut state = shared.borrow_mut();
-        services::drain_events(&mut state);
+        let commands = services::drain_events(&mut state);
         services::persist_preferences(&mut state);
-        services::ensure_services(&mut state);
+        services::tick(&mut state);
         services::sync_from_config(&mut state);
-    }
+        commands
+    };
     sync_theme(shared, cx);
 
-    let commands = {
-        let mut state = shared.borrow_mut();
-        services::poll_tray(&mut state)
-    };
     let mut show = false;
     let mut hide = false;
     let mut quit = false;
-    for command in &commands {
+    for command in window_commands {
         match command {
-            crate::platform::TrayCommand::Show => show = true,
-            crate::platform::TrayCommand::Hide => hide = true,
-            crate::platform::TrayCommand::Quit => quit = true,
-            crate::platform::TrayCommand::Pause | crate::platform::TrayCommand::Resume => {}
+            crate::app::TrayCommand::Show => show = true,
+            crate::app::TrayCommand::Hide => hide = true,
+            crate::app::TrayCommand::Quit => quit = true,
+            crate::app::TrayCommand::Pause | crate::app::TrayCommand::Resume => {}
         }
-        let mut state = shared.borrow_mut();
-        services::apply_tray_command(&mut state, command);
+    }
+    if quit {
+        cx.quit();
+        return Duration::ZERO;
     }
 
     let quitting = shared.borrow().quitting;
@@ -728,8 +710,6 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
     if !quitting {
         {
             let mut state = shared.borrow_mut();
-            services::apply_hotkeys_if_needed(&mut state);
-            services::poll_hotkeys(&mut state);
             expiry = gestures::tick_detector(&mut state);
         }
         if show {
@@ -738,6 +718,9 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
         if hide {
             window::close_settings(cx, shared);
         }
+        if shared.borrow().settings_wanted {
+            window::open_settings(cx, shared);
+        }
         overlay_window::sync(cx, shared);
         osd_window::sync(cx, shared);
     }
@@ -745,11 +728,7 @@ fn poll_tick(cx: &mut App, shared: &Shared) -> Duration {
     window::reap_closed(cx, shared);
     window::notify_settings(cx, shared);
 
-    if quit {
-        cx.quit();
-        return Duration::ZERO;
-    }
-    if shared.borrow().quitting {
+    if quitting || shared.borrow().quitting {
         return Duration::ZERO;
     }
     expiry

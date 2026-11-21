@@ -1,3 +1,9 @@
+//! Shared gpui widgets used by the settings pages and the first-launch setup.
+//!
+//! Widgets stay free of business rules: a text field receives a [`FieldRef`]
+//! built by the page that owns the target, so this module never reaches into a
+//! page's layout or into the shell state.
+
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{
@@ -13,196 +19,111 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::Tag;
 use std::collections::HashMap;
 
-/// Live text fields, keyed by control id, plus the shell handle used to
-/// commit typed text into the configuration.
+/// Typed destination of one text field.
+///
+/// A page builds this at render time: `id` keeps the input state stable across
+/// frames, while `write` captures the page's current selection and commits to
+/// the runtime. This replaces the old string-encoded field ids and removes the
+/// `controls -> pages -> controls` dependency cycle.
+#[derive(Clone)]
+pub struct FieldRef {
+    id: SharedString,
+    write: std::rc::Rc<dyn Fn(&str)>,
+}
+
+impl FieldRef {
+    /// Creates a field writer for `id`. `write` receives the new text.
+    pub fn new(id: impl Into<SharedString>, write: impl Fn(&str) + 'static) -> Self {
+        Self {
+            id: id.into(),
+            write: std::rc::Rc::new(write),
+        }
+    }
+
+    /// Stable identity of the field, used for the gpui element and input state.
+    pub fn id(&self) -> &SharedString {
+        &self.id
+    }
+}
+
+/// Live text fields, keyed by [`FieldRef::id`], with their current writer.
 #[derive(Default)]
 pub(crate) struct FieldInputs {
-    fields: HashMap<String, Entity<InputState>>,
+    fields: HashMap<SharedString, (Entity<InputState>, FieldRef)>,
     /// Kept alive so the `InputEvent::Change` subscriptions stay installed.
     _subscriptions: Vec<Subscription>,
-    shell: Option<crate::ui::shell::Shared>,
 }
 
 impl gpui::Global for FieldInputs {}
 
-/// Installs the shared shell state so [`field_input`] commits can reach the
-/// runtime. Called once from `run`, right after the shell is built.
-pub fn install_fields(cx: &mut App, shared: crate::ui::shell::Shared) {
-    cx.default_global::<FieldInputs>().shell = Some(shared);
+/// Drops every live editor. Called when the settings window opens or closes:
+/// input states belong to a window, and a stale entity would keep an old
+/// page's writer alive after a close-to-tray recreate.
+pub fn reset_fields(cx: &mut App) {
+    let global = cx.default_global::<FieldInputs>();
+    global.fields.clear();
+    global._subscriptions.clear();
 }
 
 /// Get or create the [`InputState`] of one field and subscribe its changes
-/// to the configuration commit for that field id.
+/// to the writer carried by the [`FieldRef`].
 fn ensure_field(
-    id: &str,
+    field: &FieldRef,
     placeholder: SharedString,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<InputState> {
-    if let Some(existing) = cx.default_global::<FieldInputs>().fields.get(id).cloned() {
-        return existing;
+    if let Some((entity, writer)) = cx.default_global::<FieldInputs>().fields.get_mut(&field.id) {
+        // The page re-creates the ref on every frame with fresh selections.
+        *writer = field.clone();
+        return entity.clone();
     }
     let entity = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
-    let subscription = cx.subscribe(&entity, {
-        let id = id.to_owned();
+    let id = field.id.clone();
+    let closure_id = id.clone();
+    let subscription = cx.subscribe(
+        &entity,
         move |entity: Entity<InputState>, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
                 let value = entity.read(cx).value();
-                commit_field(&id, value.as_ref(), cx);
+                // Re-borrow here: holding the global across `cx.new` would keep a
+                // mutable borrow of the app alive while the entity is created.
+                let global = cx.default_global::<FieldInputs>();
+                if let Some((_, writer)) = global.fields.get(&closure_id) {
+                    (writer.write)(value.as_ref());
+                }
             }
-        }
-    });
+        },
+    );
     let global = cx.default_global::<FieldInputs>();
-    global.fields.insert(id.to_owned(), entity.clone());
+    global.fields.insert(id, (entity.clone(), field.clone()));
     global._subscriptions.push(subscription);
     entity
-}
-
-/// Routes a field change into the configuration.
-///
-/// Field ids are stable and encode their target: `set-name` and
-/// `macro-name` act on the page's current selection, `path-*`, `steps-*`
-/// and `amount-*` on the selected set's control, `step-N-text` and
-/// `step-N-value` on the selected macro's step N.
-fn commit_field(id: &str, value: &str, cx: &mut App) {
-    let Some(shared) = cx.global::<FieldInputs>().shell.clone() else {
-        return;
-    };
-    let (runtime, selected_set, selected_macro) = {
-        let shell = shared.borrow();
-        (
-            shell.runtime.clone(),
-            shell.page.selected_set.clone(),
-            shell.page.selected_macro.clone(),
-        )
-    };
-    let config = runtime.config();
-    let first_set = || config.action_sets.first().map(|set| set.id.clone());
-    let first_macro = || config.macros.first().map(|m| m.name.clone());
-
-    if let Some(control) = id.strip_prefix("path-") {
-        let Some(set_id) = selected_set.or_else(first_set) else {
-            return;
-        };
-        drop(config);
-        let Some(control) = control_id(control) else {
-            return;
-        };
-        super::pages::actions::with_set_action(&runtime, &set_id, control, |action, _| {
-            if let crate::core::Action::Launch { path } = action {
-                *path = std::path::PathBuf::from(value);
-            }
-        });
-        return;
-    }
-    for prefix in ["steps-", "amount-"] {
-        if let Some(control) = id.strip_prefix(prefix) {
-            let Some(set_id) = selected_set.or_else(first_set) else {
-                return;
-            };
-            drop(config);
-            let Some(control) = control_id(control) else {
-                return;
-            };
-            let value = value.to_owned();
-            super::pages::actions::with_set_action(&runtime, &set_id, control, move |action, _| {
-                if let Ok(number) = value.parse::<i64>() {
-                    super::pages::actions::set_numeric(action, number);
-                }
-            });
-            return;
-        }
-    }
-    if id == "set-name" {
-        let Some(set_id) = selected_set.or_else(first_set) else {
-            return;
-        };
-        drop(config);
-        super::pages::actions::with_set(&runtime, &set_id, |set| set.name = value.to_owned());
-        return;
-    }
-    if id == "macro-name" {
-        let Some(name) = selected_macro.or_else(first_macro) else {
-            return;
-        };
-        drop(config);
-        super::pages::macros::rename_macro(&runtime, &shared, &name, value);
-        return;
-    }
-    if let Some(rest) = id.strip_prefix("step-") {
-        let (index, kind) = match rest.rsplit_once('-') {
-            Some((index, kind)) => (index, kind),
-            None => return,
-        };
-        let Ok(index) = index.parse::<usize>() else {
-            return;
-        };
-        let Some(macro_name) = selected_macro.or_else(first_macro) else {
-            return;
-        };
-        drop(config);
-        let value = value.to_owned();
-        super::pages::macros::with_macro(&runtime, &macro_name, |m| {
-            let Some(step) = m.steps.get_mut(index) else {
-                return false;
-            };
-            match kind {
-                "text" => {
-                    if matches!(step, crate::core::MacroStep::Text { .. }) {
-                        *step = crate::core::MacroStep::Text { text: value };
-                        true
-                    } else {
-                        false
-                    }
-                }
-                "value" => {
-                    if let Ok(number) = value.parse::<i64>() {
-                        super::pages::macros::set_numeric(step, number);
-                        true
-                    } else {
-                        false
-                    }
-                }
-                _ => false,
-            }
-        });
-    }
-}
-
-/// Parses the control suffix of `path-`/`steps-`/`amount-` ids.
-fn control_id(name: &str) -> Option<crate::core::Control> {
-    match name {
-        "left" => Some(crate::core::Control::Left),
-        "press" => Some(crate::core::Control::Press),
-        "right" => Some(crate::core::Control::Right),
-        _ => None,
-    }
 }
 
 /// A text field backed by gpui-kit's [`InputState`].
 ///
 /// The component owns caret, selection, clipboard and IME; the value is kept
 /// in sync with `value` whenever the configuration changes (for example when
-/// another set becomes selected), and typed changes are committed through the
-/// subscription installed in [`ensure_field`].
+/// another set becomes selected), and typed changes go to `field`'s writer.
 pub fn field_input(
-    id: &str,
+    field: FieldRef,
     placeholder: impl Into<SharedString>,
     value: impl Into<SharedString>,
     width: Option<f32>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let entity = ensure_field(id, placeholder.into(), window, cx);
+    let entity = ensure_field(&field, placeholder.into(), window, cx);
     let value: SharedString = value.into();
     if entity.read(cx).value() != value {
         entity.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
     }
-    let field = match width {
+    let field_box = match width {
         Some(width) => div().w(px(width)),
         None => div().flex_1().min_w(px(0.0)),
     };
-    field.child(Input::new(&entity)).into_any_element()
+    field_box.child(Input::new(&entity)).into_any_element()
 }
 
 /// Card container used by settings pages, backed by gpui-kit `GroupBox`.
@@ -435,7 +356,11 @@ pub fn icon_button_tinted(
 }
 
 /// Status pill with the same control height as buttons.
-pub fn status_pill(label: &str, color: Rgba) -> impl IntoElement {
+///
+/// `color` tints the wash; the ink is an opaque, AA-contrasting derivative so
+/// the label stays readable in both themes.
+pub fn status_pill(label: &str, color: Rgba, mode: crate::core::ThemeMode) -> impl IntoElement {
+    let ink = style::on_surface(color, mode);
     div()
         .flex()
         .items_center()
@@ -443,20 +368,20 @@ pub fn status_pill(label: &str, color: Rgba) -> impl IntoElement {
         .h(px(style::CONTROL_HEIGHT))
         .px_4()
         .rounded(px(style::RADIUS_CONTROL))
-        .bg(Rgba { a: 0.16, ..color })
+        .bg(style::alpha(color, 0.16))
         .text_size(px(14.0))
         .font_weight(gpui::FontWeight::SEMIBOLD)
-        .text_color(color)
+        .text_color(ink)
         .child(label.to_owned())
 }
 
 /// Compact inline tag for tight rows.
-pub fn inline_pill(label: &str, color: Rgba) -> impl IntoElement {
+pub fn inline_pill(label: &str, color: Rgba, mode: crate::core::ThemeMode) -> impl IntoElement {
     Tag::new()
         .rounded_full()
         .text_xs()
-        .text_color(color)
-        .bg(Rgba { a: 0.16, ..color })
+        .text_color(style::on_surface(color, mode))
+        .bg(style::alpha(color, 0.16))
         .child(label.to_owned())
 }
 
@@ -467,6 +392,7 @@ pub fn empty_state(
     description: &str,
     badge: &str,
     badge_color: Rgba,
+    mode: crate::core::ThemeMode,
 ) -> impl IntoElement {
     div()
         .w_full()
@@ -487,10 +413,14 @@ pub fn empty_state(
                 .text_color(t.muted)
                 .child(description.to_owned()),
         )
-        .child(div().mt(px(6.0)).child(status_pill(badge, badge_color)))
+        .child(
+            div()
+                .mt(px(6.0))
+                .child(status_pill(badge, badge_color, mode)),
+        )
 }
 
-/// Numbered roadmap row.
+/// Numbered onboarding step row.
 pub fn timeline_item(
     t: Tokens,
     index: usize,
@@ -510,7 +440,7 @@ pub fn timeline_item(
                 .justify_center()
                 .size(px(26.0))
                 .rounded_full()
-                .bg(Rgba { a: 0.16, ..circle })
+                .bg(style::alpha(circle, 0.16))
                 .text_size(px(12.0))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(circle)
@@ -862,13 +792,14 @@ pub fn select_menu_items(
 /// `input_width` sizes the text field; `None` stretches the whole control to
 /// the remaining row space (used by the actions page).
 pub fn number_field(
-    id: &str,
+    field: FieldRef,
     value: impl Into<SharedString>,
     on_delta: impl Fn(i64, &mut Window, &mut App) + Clone + 'static,
     input_width: Option<f32>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
+    let id = field.id().clone();
     let minus = on_delta.clone();
     let plus = on_delta;
     div()
@@ -881,7 +812,7 @@ pub fn number_field(
             gpui_icons::LucideIcon::Minus,
             move |window, cx| minus(-1, window, cx),
         ))
-        .child(field_input(id, "", value, input_width, window, cx))
+        .child(field_input(field, "", value, input_width, window, cx))
         .child(stepper_button(
             format!("{id}-plus"),
             gpui_icons::LucideIcon::Plus,
@@ -919,9 +850,9 @@ impl Render for SimpleTooltip {
             .px_2()
             .py(px(3.0))
             .rounded(px(style::RADIUS_CONTROL))
-            .bg(gpui::rgb(0x000000).alpha(0.85))
+            .bg(style::TOOLTIP_BG)
             .text_size(px(12.0))
-            .text_color(gpui::rgb(0xFFFFFF))
+            .text_color(style::TOOLTIP_FG)
             .child(self.text.clone())
     }
 }

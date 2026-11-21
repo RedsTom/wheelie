@@ -1,21 +1,26 @@
-//! OS service wiring for the gpui shell.
+//! Event routing for the gpui shell.
 //!
-//! Tray and hotkey creation/polling run on the main thread inside the tick, so
-//! the platform adapters never have to guess which thread owns them.
+//! OS services (global keys and tray) are owned by the application layer and
+//! created/polled on the thread that runs the window event loop; see the
+//! documented exception on [`crate::app::RuntimeHandle::tick_services`]. This
+//! module only routes the resulting events into UI state and reports window
+//! changes back to the runtime. It makes no OS calls and takes no runtime
+//! decisions.
 
-use crate::app::action_worker::discard_injected;
-use crate::app::{AppCommand, AppEvent, RuntimeState};
-use crate::core::{TextKey, tr};
-use crate::platform::{GlobalHotkeyService, HotkeySource, TrayCommand, TrayService};
+use crate::app::{AppEvent, RuntimeState, TrayCommand};
+use crate::core::{GestureDetector, InputEvent};
 use crate::ui::osd_window::Osd;
 use std::time::Instant;
-use tracing::{info, warn};
 
 use super::shell::ShellState;
 use super::{capture, gestures};
 
-/// Drains runtime events into the shell snapshot.
-pub fn drain_events(state: &mut ShellState) {
+/// Drains runtime events into the shell snapshot and the gesture detector.
+///
+/// Returns tray commands that only the shell may apply: windows and process
+/// exit. Runtime-state commands are handled here and not returned.
+pub fn drain_events(state: &mut ShellState) -> Vec<TrayCommand> {
+    let mut window_commands = Vec::new();
     while let Some(event) = state.runtime.try_recv_event() {
         match event {
             AppEvent::StateChanged(snapshot) => state.snapshot = snapshot,
@@ -23,167 +28,59 @@ pub fn drain_events(state: &mut ShellState) {
             AppEvent::Indicator(indicator) => {
                 state.osd = Some(Osd::new(indicator));
             }
+            AppEvent::Hotkeys(events) => route_hotkeys(state, events),
+            AppEvent::Tray(commands) => {
+                for command in commands {
+                    if matches!(
+                        command,
+                        TrayCommand::Show | TrayCommand::Hide | TrayCommand::Quit
+                    ) {
+                        window_commands.push(command);
+                    }
+                    apply_tray_command(state, &command);
+                }
+            }
         }
+    }
+    window_commands
+}
+
+/// Sends tray commands that change the runtime state; window commands are
+/// consumed by the caller because only the shell can open or close windows.
+pub fn apply_tray_command(state: &mut ShellState, command: &TrayCommand) {
+    match command {
+        TrayCommand::Pause => {
+            let _ = state.runtime.send(crate::app::AppCommand::Pause);
+        }
+        TrayCommand::Resume => {
+            let _ = state.runtime.send(crate::app::AppCommand::Resume);
+        }
+        TrayCommand::Quit => {
+            state.quitting = true;
+            let _ = state.runtime.send(crate::app::AppCommand::Quit);
+        }
+        TrayCommand::Show => state.settings_wanted = true,
+        TrayCommand::Hide => state.settings_wanted = false,
     }
 }
 
-/// Creates the OS services that need the window event loop.
-pub fn ensure_services(state: &mut ShellState) {
-    if state.hotkeys.is_none() && !state.hotkeys_failed {
-        match GlobalHotkeyService::new() {
-            Ok(service) => {
-                info!("global key watcher ready");
-                state.hotkeys = Some(service);
-                state.hotkeys_dirty = true;
-            }
-            Err(error) => {
-                warn!(%error, "global key watcher unavailable");
-                state.hotkeys_failed = true;
-                state.runtime.report_error(error.to_string());
-            }
-        }
-    }
-
-    if state.tray.is_none() && !state.tray_failed && state.runtime.config().general.show_tray {
-        let language = state.preferences.language;
-        let built =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| TrayService::new(language)));
-        match built {
-            Ok(Ok(tray)) => {
-                state.tray = Some(tray);
-                state.tray_language = language;
-            }
-            Ok(Err(error)) => {
-                warn!(%error, "tray icon unavailable");
-                state.tray_failed = true;
-            }
-            Err(_) => {
-                warn!("tray icon unavailable on this system");
-                state.tray_failed = true;
-            }
-        }
-    }
-
-    if state.tray_language != state.preferences.language
-        && let Some(tray) = state.tray.take()
-    {
-        drop(tray);
-        state.tray_failed = false;
-    }
-
-    if let Some(tray) = &mut state.tray {
-        let language = state.preferences.language;
-        let window_visible = state.settings_window.is_some();
-        if let Err(error) = tray.set_state(language, window_visible, state.paused) {
-            warn!(%error, "tray menu update failed");
-        }
-    }
-}
-
-/// Keeps the gesture detector aligned with the active profile.
-pub fn sync_from_config(state: &mut ShellState) {
-    let config = state.runtime.config();
-
-    if let Some(profile) = config.active_profile()
-        && profile.bindings != state.detector.bindings()
-    {
-        state.detector.set_bindings(profile.bindings);
-        state.hotkeys_dirty = true;
-    }
-
-    let gesture_config = config.general.gesture_config();
-    if gesture_config != state.gesture_config {
-        let bindings = state.detector.bindings();
-        let overlay_open = state.overlay.open;
-        state.detector = crate::core::GestureDetector::new(bindings, gesture_config);
-        state.detector.set_overlay_open(overlay_open);
-        state.gesture_config = gesture_config;
-    }
-
-    let paused = matches!(
-        state.snapshot.state,
-        RuntimeState::Paused | RuntimeState::Stopped
-    );
-    if paused != state.paused {
-        state.paused = paused;
-        state.hotkeys_dirty = true;
-    }
-
-    // While a key capture is pending, the watched keys must be released:
-    // an exclusively captured key never reaches the settings window, so the
-    // wheel, its actions and the capture itself would all fight for the press.
-    let capturing = state.capture.is_some();
-    if capturing != state.capturing {
-        state.capturing = capturing;
-        state.hotkeys_dirty = true;
-    }
-}
-
-/// Re-registers the watched keys after bindings, pause or test changes.
-pub fn apply_hotkeys_if_needed(state: &mut ShellState) {
-    if !state.hotkeys_dirty {
-        return;
-    }
-    state.hotkeys_dirty = false;
-
-    let Some(service) = &mut state.hotkeys else {
-        return;
-    };
-
-    let result = if state.paused {
-        service.unregister_all()
-    } else if state.capturing {
-        // The knob keys are released so a pressed key reaches the field.
-        // Volume, media and shell chords still need the global watcher because
-        // the system consumes them before the window ever sees the press.
-        let refused = service.apply_optional(&capture::capture_only_chords());
-        if !refused.is_empty() {
-            let labels = refused
-                .iter()
-                .map(|chord| chord.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            warn!(keys = %labels, "the system keeps these keys during capture");
-        }
-        Ok(())
-    } else {
-        let bindings = state.detector.bindings();
-        service.apply(&[bindings.left, bindings.right, bindings.press])
-    };
-
-    match result {
-        Ok(()) => state
-            .runtime
-            .set_capture_active(!state.paused && !state.capturing),
-        Err(error) => {
-            state.runtime.set_capture_active(false);
-            state.runtime.report_error(error.to_string());
-        }
-    }
-}
-
-/// Drains hotkey events into the gesture detector (or the key tester).
-pub fn poll_hotkeys(state: &mut ShellState) {
-    let events = match &mut state.hotkeys {
-        Some(service) => service.poll(),
-        None => Vec::new(),
-    };
-    let events = discard_injected(events, &state.injection);
-
+/// Routes hotkey events to the pending key field or the gesture detector.
+fn route_hotkeys(state: &mut ShellState, events: Vec<InputEvent>) {
     if events.is_empty() {
         return;
     }
-
     if state.capture.is_some() {
         for event in events {
-            if let crate::core::InputEvent::Pressed(chord) = event {
+            if let InputEvent::Pressed(chord) = event {
                 capture::record_chord(state, chord);
             }
         }
         return;
     }
-
-    if state.paused {
+    if matches!(
+        state.snapshot.state,
+        RuntimeState::Paused | RuntimeState::Stopped
+    ) {
         return;
     }
 
@@ -192,6 +89,84 @@ pub fn poll_hotkeys(state: &mut ShellState) {
         for gesture in state.detector.feed(event, now) {
             gestures::handle_gesture(state, gesture);
         }
+    }
+}
+
+/// Polls OS services once and publishes the window state they need.
+///
+/// This is the only per-tick call that reaches the OS, and it stays inside the
+/// application layer so the UI never names a platform adapter.
+pub fn tick(state: &mut ShellState) {
+    state.runtime.tick_services();
+    state.snapshot.healthy = state.runtime.health();
+    state
+        .runtime
+        .set_window_visible(state.settings_window.is_some());
+    state
+        .runtime
+        .set_key_capture_active(state.capture.is_some());
+}
+
+/// Keeps the gesture detector aligned with the active profile and validates
+/// the page's ephemeral selections against the current configuration.
+pub fn sync_from_config(state: &mut ShellState) {
+    let config = state.runtime.config();
+
+    if let Some(profile) = config.active_profile()
+        && profile.bindings != state.detector.bindings()
+    {
+        state.detector.set_bindings(profile.bindings);
+    }
+
+    let gesture_config = config.general.gesture_config();
+    if gesture_config != state.gesture_config {
+        let bindings = state.detector.bindings();
+        let overlay_open = state.overlay.open;
+        state.detector = GestureDetector::new(bindings, gesture_config);
+        state.detector.set_overlay_open(overlay_open);
+        state.gesture_config = gesture_config;
+    }
+
+    validate_selections(state, &config);
+}
+
+/// Drops selections and captures that no longer name an existing item.
+fn validate_selections(state: &mut ShellState, config: &crate::core::Config) {
+    let default_set = || config.action_sets.first().map(|set| set.id.clone());
+    let selected_set = state
+        .page
+        .selected_set
+        .take()
+        .filter(|id| config.action_sets.iter().any(|set| &set.id == id))
+        .or_else(default_set);
+    state.page.selected_set = selected_set;
+
+    let default_macro = || config.macros.first().map(|item| item.name.clone());
+    let selected_macro = state
+        .page
+        .selected_macro
+        .take()
+        .filter(|name| config.macros.iter().any(|item| &item.name == name))
+        .or_else(default_macro);
+    state.page.selected_macro = selected_macro;
+
+    if let Some(name) = &state.page.selected_macro {
+        let steps = config
+            .macros
+            .iter()
+            .find(|item| &item.name == name)
+            .map(|item| item.steps.len())
+            .unwrap_or(0);
+        if state.page.selected_step.is_some_and(|index| index >= steps) {
+            state.page.selected_step = None;
+            state.page.open_menu = None;
+        }
+    } else {
+        state.page.selected_step = None;
+    }
+
+    if state.page.open_menu.is_some() && state.page.selected_set.is_none() {
+        state.page.open_menu = None;
     }
 }
 
@@ -211,41 +186,5 @@ pub fn persist_preferences(state: &mut ShellState) {
         config.general.theme = theme_mode;
     }) {
         state.runtime.report_error(error.to_string());
-    }
-}
-
-/// Drains tray menu commands; window actions are applied by the caller.
-pub fn poll_tray(state: &mut ShellState) -> Vec<TrayCommand> {
-    state
-        .tray
-        .as_ref()
-        .map(TrayService::poll)
-        .unwrap_or_default()
-}
-
-/// Name of the active (or first) action set for the sidebar footer.
-pub fn active_set_name(state: &ShellState) -> String {
-    let config = state.runtime.config();
-    let language = state.preferences.language;
-    match config.active_set_or_first() {
-        Some(set) => set.name.clone(),
-        None => tr(language, TextKey::NoSetLabel).to_owned(),
-    }
-}
-
-/// Sends the pause/resume/quit command matching a tray command.
-pub fn apply_tray_command(state: &mut ShellState, command: &TrayCommand) {
-    match command {
-        TrayCommand::Pause => {
-            let _ = state.runtime.send(AppCommand::Pause);
-        }
-        TrayCommand::Resume => {
-            let _ = state.runtime.send(AppCommand::Resume);
-        }
-        TrayCommand::Quit => {
-            state.quitting = true;
-            let _ = state.runtime.send(AppCommand::Quit);
-        }
-        TrayCommand::Show | TrayCommand::Hide => {}
     }
 }

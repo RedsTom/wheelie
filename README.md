@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo/logo-4x.png" alt="Wheelie logo" width="120">
+<img src="assets/logo/logo.svg" alt="Wheelie logo" width="120">
 
 # Wheelie
 
@@ -53,21 +53,37 @@ them to the background — and runs your own actions instead.
 - **Release notices**: at startup Wheelie looks at the stable versions
   published on GitHub and points you to the release page when a newer one
   exists. Ignorable per version, and switchable off in the settings.
-- **Portable and installed builds** for every platform, built automatically for
-  each release.
+- **Installed builds and binary archives** for every platform, built
+  automatically for each release.
 
 ## Download
 
 Grab the latest release for your platform:
 
-| Platform | Installer | Portable |
+| Platform | Installer | Binary archive |
 | --- | --- | --- |
 | Windows 10/11 (x64) | `*-win-x64-setup.exe` | `*-win-x64-portable.zip` |
 | macOS 12+ (universal) | `*-macos-universal.dmg` | `*-macos-portable.zip` |
 | Linux x64 | `.deb`, `.rpm`, `.AppImage` | `*-linux-x64-portable.tar.gz` |
 
 > Builds are not code-signed yet: expect one SmartScreen prompt on Windows and a
-> Gatekeeper confirmation on macOS (right-click → Open).
+> Gatekeeper confirmation on macOS (right-click → Open). The macOS archives are
+> ad-hoc signed; the `portable` names in archive filenames are kept for
+> compatibility, even where the archive is a plain binary archive.
+
+The Linux `.tar.gz` is a binary archive, not a self-contained bundle: it carries
+the executable, icons and a desktop-entry installer, but relies on system
+libraries. On Debian/Ubuntu install them with:
+
+```bash
+sudo apt-get install -y libgtk-3-0 libayatana-appindicator3-1 \
+  libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcb1 \
+  libxcursor1 libxrandr2 libxi6 libgl1 libwayland-client0 \
+  libxdo3 libfontconfig1 libssl3 libvulkan1
+```
+
+The `.deb` and `.rpm` packages declare their runtime dependencies; the
+`.AppImage` still needs a usable host graphics stack.
 
 Releases: [latest stable][releases-link] · [all releases][releases-link]
 
@@ -99,7 +115,8 @@ the platform data directory under `Wheelie/data/logs/`.
 
 ## Build from source
 
-Requires a recent stable Rust toolchain (see `rust-version` in `Cargo.toml`).
+Requires Rust 1.98 minimum (see `rust-toolchain.toml` and `rust-version` in
+`Cargo.toml`; the version is imposed by `gpui-icons` 0.7.0).
 
 ```bash
 cargo run              # develop
@@ -108,8 +125,8 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-On Linux, install the GTK/X11/Wayland development packages listed in
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) first. Physical-knob
+On Linux, install the GTK/X11/Wayland development packages from
+[`packaging/linux/install-deps.sh`](packaging/linux/install-deps.sh) first. Physical-knob
 verification follows [`docs/MANUAL_TEST.md`](docs/MANUAL_TEST.md); the
 development plan lives in [`ROADMAP.md`](ROADMAP.md).
 

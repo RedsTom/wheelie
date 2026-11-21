@@ -6,38 +6,90 @@ use crate::core::{CaptureMode, PlatformInfo};
 const OS_NAME: &str = "Windows";
 #[cfg(target_os = "macos")]
 const OS_NAME: &str = "macOS";
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(target_os = "linux")]
 const OS_NAME: &str = "Linux";
-#[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+/// Other Unixes are not a tested target: say so plainly instead of claiming
+/// full Linux support.
+#[cfg(any(
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+))]
+const OS_NAME: &str = "Unix (best effort)";
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+)))]
 const OS_NAME: &str = "Unknown";
 
 #[cfg(target_os = "windows")]
 const CAPTURE: CaptureMode = CaptureMode::ExclusiveHotkeys;
 #[cfg(target_os = "macos")]
 const CAPTURE: CaptureMode = CaptureMode::PermissionedHotkeys;
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(target_os = "linux")]
 const CAPTURE: CaptureMode = CaptureMode::X11BestEffort;
-#[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+#[cfg(any(
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+))]
+const CAPTURE: CaptureMode = CaptureMode::X11BestEffort;
+#[cfg(not(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+)))]
 const CAPTURE: CaptureMode = CaptureMode::Unsupported;
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+))]
 const CAPTURE_IS_LIMITED: bool = true;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
+)))]
 const CAPTURE_IS_LIMITED: bool = false;
 
-/// macOS uses the brightness keys, Windows uses WMI and Linux uses
-/// `brightnessctl`. A display without brightness control reports an error
-/// when the action runs.
+/// macOS uses the brightness keys, Windows uses WMI and other Unixes try
+/// `brightnessctl`. A display without brightness control reports an error when
+/// the action runs.
 #[cfg(any(
     target_os = "macos",
     target_os = "windows",
-    all(unix, not(target_os = "macos"))
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
 ))]
 const BRIGHTNESS_SUPPORTED: bool = true;
 #[cfg(not(any(
     target_os = "macos",
     target_os = "windows",
-    all(unix, not(target_os = "macos"))
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly"
 )))]
 const BRIGHTNESS_SUPPORTED: bool = false;
 

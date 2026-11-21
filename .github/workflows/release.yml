@@ -1,19 +1,24 @@
 name: Release
 
-# Publishable artifacts are built when a GitHub release is published,
-# stable or pre-release alike. See AGENTS.md "Branching & release pipeline".
+# Publishable artifacts are built when a GitHub release is published. Betas are
+# tagged `vX.Y.Z-beta.N` but published as normal releases: the GitHub prerelease
+# flag is rejected. See AGENTS.md "Branching & release pipeline".
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to rebuild against (defaults to the triggering release)
-        required: false
+        description: Existing release tag to rebuild against
+        required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,68 +30,100 @@ jobs:
     outputs:
       tag: ${{ steps.guard.outputs.tag }}
       version: ${{ steps.guard.outputs.version }}
+      safe_version: ${{ steps.guard.outputs.safe_version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
 
-      - name: Validate tag against Cargo.toml
+      - name: Validate tag against main and Cargo.toml
         id: guard
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
-          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::Release tag '$tag' is not vMAJOR.MINOR.PATCH[-prerelease]"
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not vMAJOR.MINOR.PATCH[-beta.N]"
             exit 1
           fi
-          version="${tag#v}"
+          if [ "$EVENT_NAME" = "release" ] && [ "$RELEASE_PRERELEASE" = "true" ]; then
+            echo "::error::Betas are published as normal releases; do not tick pre-release"
+            exit 1
+          fi
+
+          version="${TAG#v}"
           base="${version%%-*}"
-          cargo_version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          cargo_version="$(cargo metadata --locked --no-deps --format-version 1 \
+            | jq -r '.packages[0].version')"
           if [ "$base" != "$cargo_version" ]; then
             echo "::error::Tag base version $base does not match Cargo.toml version $cargo_version. Bump Cargo.toml before tagging."
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$TAG" origin/main; then
+            echo "::error::Tag $TAG is not an ancestor of origin/main; releases must be tagged from main"
+            exit 1
+          fi
+
+          safe_version="$(printf '%s' "$version" | tr '-' '~')"
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "safe_version=$safe_version"
+          } >> "$GITHUB_OUTPUT"
 
   windows:
     name: Windows x64
     needs: meta
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.98"
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build release binary
         run: cargo build --release
 
       - name: NSIS installer
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
-          choco install nsis -y --limit-output | Out-Null
+          choco install nsis --version=3.13.0 -y --limit-output | Out-Null
           New-Item -ItemType Directory -Force dist | Out-Null
           $ws = $env:GITHUB_WORKSPACE
-          $ver = "${{ needs.meta.outputs.version }}"
           & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            "/DAPP_VERSION=$ver" `
+            "/DAPP_VERSION=$env:VERSION" `
             "/DBINARY=$ws\target\release\wheelie.exe" `
             "/DICON=$ws\assets\icons\app.ico" `
             "/DLICENSE=$ws\LICENSE" `
-            "/DOUTFILE=$ws\dist\Wheelie-$ver-win-x64-setup.exe" `
+            "/DOUTFILE=$ws\dist\Wheelie-$env:VERSION-win-x64-setup.exe" `
             packaging\windows\installer.nsi
 
       - name: Portable zip
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           New-Item -ItemType Directory -Force dist\portable | Out-Null
           Copy-Item target\release\wheelie.exe dist\portable\
           Copy-Item LICENSE dist\portable\LICENSE.txt
           Compress-Archive -Path dist\portable\* `
-            -DestinationPath "dist\Wheelie-${{ needs.meta.outputs.version }}-win-x64-portable.zip"
+            -DestinationPath "dist\Wheelie-$env:VERSION-win-x64-portable.zip"
           Remove-Item -Recurse -Force dist\portable
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: win-x64
           path: dist/*
@@ -97,13 +134,17 @@ jobs:
     needs: meta
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.98"
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build both Apple slices
         run: |
@@ -122,7 +163,7 @@ jobs:
           VERSION="$VERSION" BIN=dist/universal/wheelie OUT_DIR=dist bash packaging/macos/make-app.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-universal
           # Only the shipped archives: a bare dist/* would recurse into
@@ -137,40 +178,25 @@ jobs:
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            libx11-dev \
-            libx11-xcb-dev \
-            libxcb1-dev \
-            libxcursor-dev \
-            libxrandr-dev \
-            libxi-dev \
-            libgl1-mesa-dev \
-            libwayland-dev \
-            libxdo-dev \
-            libfontconfig-dev \
-            libssl-dev \
-            libvulkan1 \
-            rpm
+        run: bash packaging/linux/install-deps.sh
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.98"
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build release binary
         run: cargo build --release
 
-      - name: Package deb, rpm, AppImage and portable tarball
+      - name: Package deb, rpm, AppImage and binary archive
         env:
           VERSION: ${{ needs.meta.outputs.version }}
           BIN: target/release/wheelie
@@ -182,7 +208,7 @@ jobs:
           bash packaging/linux/make-portable.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-x64
           path: dist/*
@@ -192,19 +218,58 @@ jobs:
     name: Attach to release
     needs: [meta, windows, macos, linux]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
+
+      - name: Verify the eight-asset manifest
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          SAFE_VERSION: ${{ needs.meta.outputs.safe_version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*/*)
+          if [ "${#files[@]}" -ne 8 ]; then
+            echo "::error::Expected 8 release assets, found ${#files[@]}"
+            ls -R dist
+            exit 1
+          fi
+          expected=(
+            "Wheelie-$VERSION-win-x64-setup.exe"
+            "Wheelie-$VERSION-win-x64-portable.zip"
+            "Wheelie-$VERSION-macos-universal.dmg"
+            "Wheelie-$VERSION-macos-portable.zip"
+            "wheelie_${SAFE_VERSION}_amd64.deb"
+            "wheelie-${SAFE_VERSION}-1.x86_64.rpm"
+            "Wheelie-$VERSION-x86_64.AppImage"
+            "Wheelie-$VERSION-linux-x64-portable.tar.gz"
+          )
+          for name in "${expected[@]}"; do
+            matches=(dist/*/"$name")
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one asset named $name, found ${#matches[@]}"
+              exit 1
+            fi
+          done
+          printf 'Verified %s assets for %s\n' "${#files[@]}" "$TAG"
 
       - name: Upload all artifacts to the release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          set -euo pipefail
           shopt -s nullglob
           files=(dist/*/*)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::No build artifacts found"
-            exit 1
+          upload_args=()
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            upload_args+=(--clobber)
           fi
-          gh release upload "${{ needs.meta.outputs.tag }}" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" "${files[@]}" "${upload_args[@]}" \
+            --repo "$GITHUB_REPOSITORY"

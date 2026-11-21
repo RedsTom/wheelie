@@ -35,7 +35,3 @@ cp -a %{S:0}/usr %{buildroot}/usr
 /usr/share/icons/hicolor/256x256/apps/wheelie.png
 /usr/share/icons/hicolor/scalable/apps/wheelie.svg
 %doc /usr/share/doc/wheelie/LICENSE
-
-%changelog
-* Thu Jan 01 2026 RedsTom - @VERSION@-1
-- Release built by the GitHub release workflow.

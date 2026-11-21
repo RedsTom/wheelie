@@ -1,7 +1,14 @@
 ; NSIS installer script for Wheelie.
 ;
-; Invoked by the release workflow from the repository root:
-;   makensis /DAPP_VERSION=<ver> /DOUTFILE=<setup.exe> packaging\windows\installer.nsi
+; Invoked by the release workflow from the repository root with all paths
+; supplied as absolute defines (quoted when they contain spaces):
+;   makensis /DAPP_VERSION=<ver> /DOUTFILE=<setup.exe> \
+;     /DBINARY=<abs>\target\release\wheelie.exe \
+;     /DICON=<abs>\assets\icons\app.ico \
+;     /DLICENSE=<abs>\LICENSE \
+;     packaging\windows\installer.nsi
+; BINARY, ICON, LICENSE and OUTFILE have repository-relative fallbacks for
+; local builds; APP_VERSION defaults to 0.0.0.
 
 Unicode true
 !include "MUI2.nsh"

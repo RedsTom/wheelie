@@ -121,6 +121,17 @@ pub fn cancel(shared: &Shared) {
     abandon(&mut shared.borrow_mut());
 }
 
+/// Leaves the capture only if it belongs to `target`.
+///
+/// Every key chip uses this from its outside-mouse handler: clicking a
+/// different control abandons the current capture before starting a new one.
+pub fn abandon_if_target(shared: &Shared, target: &CaptureTarget) {
+    let active = shared.borrow().capture.as_ref() == Some(target);
+    if active {
+        abandon(&mut shared.borrow_mut());
+    }
+}
+
 /// Leaves any capture in progress without storing anything.
 ///
 /// A field that can no longer be seen must keep the system shortcuts it took

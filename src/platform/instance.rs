@@ -25,15 +25,16 @@ impl InstanceGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_SLOT: AtomicUsize = AtomicUsize::new(0);
 
     #[test]
     fn second_instance_is_detected() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let id = format!("wheelie-test-{nanos}");
+        // The process id keeps parallel test binaries apart; the counter keeps
+        // repeated tests in the same binary apart without relying on the clock.
+        let slot = TEST_SLOT.fetch_add(1, Ordering::Relaxed);
+        let id = format!("wheelie-test-{}-{slot}", std::process::id());
 
         let first = InstanceGuard::acquire(&id).expect("first instance");
         assert!(first.is_single());

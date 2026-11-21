@@ -133,7 +133,9 @@ pub fn to_global_code(key: KeyCode) -> Option<Code> {
 /// Maps a domain key to an enigo key.
 ///
 /// `F21`-`F24`, `Insert` and `MediaStop` are not available in `enigo` on
-/// macOS, so they map to `None` there.
+/// macOS, so they map to `None` there. This mapping is the single source of
+/// truth for platform-limited injection: callers derive feature availability
+/// from `to_enigo_key(key).is_none()` instead of repeating a target check.
 pub fn to_enigo_key(key: KeyCode) -> Option<EnigoKey> {
     match key {
         KeyCode::F21 | KeyCode::F22 | KeyCode::F23 | KeyCode::F24 => limited_function_key(key),

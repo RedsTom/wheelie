@@ -31,15 +31,71 @@ impl SettingsTab {
     /// Tabs in the main navigation; Settings is pinned to the bottom.
     pub const MAIN: [Self; 4] = [Self::General, Self::Devices, Self::Actions, Self::Macros];
 
+    /// Declarative descriptors in display order: id, copy key and drawer icon.
+    ///
+    /// Adding a section now means one row here plus one renderer in
+    /// `pages::render`; the sidebar, labels and icons all read this table.
+    pub const DESCRIPTORS: [TabDescriptor; 5] = [
+        TabDescriptor::new(
+            Self::General,
+            TextKey::TabGeneral,
+            gpui_icons::LucideIcon::LayoutDashboard,
+        ),
+        TabDescriptor::new(
+            Self::Devices,
+            TextKey::TabDevices,
+            gpui_icons::LucideIcon::SlidersHorizontal,
+        ),
+        TabDescriptor::new(
+            Self::Actions,
+            TextKey::TabActions,
+            gpui_icons::LucideIcon::Waypoints,
+        ),
+        TabDescriptor::new(
+            Self::Macros,
+            TextKey::TabMacros,
+            gpui_icons::LucideIcon::ScrollText,
+        ),
+        TabDescriptor::new(
+            Self::Settings,
+            TextKey::TabSettings,
+            gpui_icons::LucideIcon::Settings,
+        ),
+    ];
+
+    /// Descriptor of this tab.
+    pub fn descriptor(self) -> &'static TabDescriptor {
+        Self::DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.tab == self)
+            .expect("every settings tab has a descriptor")
+    }
+
     /// Translated tab label.
     pub fn label(self, language: Language) -> &'static str {
-        match self {
-            Self::General => tr(language, TextKey::TabGeneral),
-            Self::Devices => tr(language, TextKey::TabDevices),
-            Self::Actions => tr(language, TextKey::TabActions),
-            Self::Macros => tr(language, TextKey::TabMacros),
-            Self::Settings => tr(language, TextKey::TabSettings),
-        }
+        tr(language, self.descriptor().label)
+    }
+
+    /// Drawer icon of this tab.
+    pub fn icon(self) -> gpui_icons::LucideIcon {
+        self.descriptor().icon
+    }
+}
+
+/// One row of [`SettingsTab::DESCRIPTORS`].
+pub struct TabDescriptor {
+    /// Stable tab id.
+    pub tab: SettingsTab,
+    /// Translation key of the visible label.
+    pub label: TextKey,
+    /// Icon shown next to the label.
+    pub icon: gpui_icons::LucideIcon,
+}
+
+impl TabDescriptor {
+    /// Creates a descriptor.
+    pub const fn new(tab: SettingsTab, label: TextKey, icon: gpui_icons::LucideIcon) -> Self {
+        Self { tab, label, icon }
     }
 }
 

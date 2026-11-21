@@ -26,9 +26,25 @@ pub fn data_dir() -> Result<PathBuf, PlatformError> {
     Ok(project_dirs()?.data_dir().to_path_buf())
 }
 
-/// Log directory, created on demand.
-pub fn log_dir() -> Result<PathBuf, PlatformError> {
-    let dir = data_dir()?.join("logs");
+/// Path of the log directory, without touching the filesystem.
+///
+/// Pure helper for callers that only need to display or inspect the path.
+pub fn log_path() -> Result<PathBuf, PlatformError> {
+    Ok(data_dir()?.join("logs"))
+}
+
+/// Creates the log directory on demand and returns its path.
+pub fn ensure_log_dir() -> Result<PathBuf, PlatformError> {
+    let dir = log_path()?;
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+/// Creates the log directory and returns its path.
+///
+/// Compatibility alias for [`ensure_log_dir`]; new code that only needs the
+/// path should call [`log_path`] instead of creating a directory as a side
+/// effect.
+pub fn log_dir() -> Result<PathBuf, PlatformError> {
+    ensure_log_dir()
 }

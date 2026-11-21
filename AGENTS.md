@@ -62,10 +62,13 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-CI runs fmt on Linux, and clippy + tests on Windows, macOS and Ubuntu. It is
-path-filtered: docs-only changes (`**.md`, `docs/**`, `LICENSE`), packaging and
-`release.yml` changes do not trigger it; a `.github/workflows/ci.yml` change
-always does, and `workflow_dispatch` covers the rare "test docs anyway" case.
+CI runs fmt on Linux, and clippy + tests plus a `cargo run -- --version` smoke
+check on Windows, macOS and Ubuntu; a dedicated Linux job checks the MSRV with
+`cargo +1.98 check --locked`. It is path-filtered: docs-only changes (`**.md`,
+`docs/**`, `LICENSE`), packaging and `release.yml` changes do not trigger it; a
+`.github/workflows/ci.yml` change always does, and `workflow_dispatch` covers
+the rare "test docs anyway" case. Packaging changes are covered by
+`validate-packaging.yml`; dependency advisories run weekly in `security.yml`.
 
 ## Branching & release pipeline
 
@@ -77,7 +80,8 @@ Long-lived branches:
 Flow:
 
 - **Feature**: branch `feat/<slug>` from `dev`, open a PR into `dev`. CI
-  (`.github/workflows/ci.yml`) gates fmt, clippy and tests on every push and PR.
+  (`.github/workflows/ci.yml`) gates fmt, clippy and tests on every push to
+  `main`/`dev` and every PR.
 - **Release**: open a PR `dev` → `main`. Bump the `version` in `Cargo.toml` in
   that PR. After merge, tag `vX.Y.Z` (or `vX.Y.Z-beta.N` for betas) and create
   the GitHub release. Betas are published as normal releases: never tick
@@ -92,15 +96,23 @@ CD builds, per published release, and attaches these assets to the release:
 |---|---|
 | Windows x64 | `Wheelie-<ver>-win-x64-setup.exe` (NSIS), `Wheelie-<ver>-win-x64-portable.zip` |
 | macOS universal | `Wheelie-<ver>-macos-universal.dmg`, `Wheelie-<ver>-macos-portable.zip` (arm64 + x86_64 fused with `lipo`, ad-hoc signed) |
-| Linux x64 | `wheelie_<ver>_amd64.deb`, `wheelie-<ver>-1.x86_64.rpm`, `Wheelie-<ver>-x86_64.AppImage`, `Wheelie-<ver>-linux-x64-portable.tar.gz` |
+| Linux x64 | `wheelie_<ver>_amd64.deb`, `wheelie-<ver>-1.x86_64.rpm`, `Wheelie-<ver>-x86_64.AppImage`, `Wheelie-<ver>-linux-x64-portable.tar.gz` (binary archive: system libraries are required) |
 
 Rules:
 
 - The `meta` job fails the pipeline when the tag base version differs from
   `Cargo.toml`; prerelease suffixes (`-beta.1`) are allowed on the tag only.
+  Betas are tagged with `-beta.N` but published as normal releases: the GitHub
+  prerelease flag is rejected. The tag must be an ancestor of `origin/main`.
 - Packaging inputs live in `packaging/` (NSIS script, `Info.plist`, desktop
-  entry, deb/rpm/AppImage scripts); keep them in sync with renames and icon
-  changes.
+  entry, deb/rpm/AppImage scripts, shared Linux dependency installer); keep
+  them in sync with renames and icon changes. The Linux tarball is a binary
+  archive, not a self-contained bundle; its legacy `portable` filename stays
+  stable for the eight-asset release contract.
+- CI actions and packaging downloads are pinned (commit SHAs or dated releases
+  plus SHA-256); `.github/dependabot.yml` keeps them updated. Packaging scripts
+  and workflows are linted by `.github/workflows/validate-packaging.yml`, and
+  dependency advisories are checked weekly by `.github/workflows/security.yml`.
 - Nothing is code-signed: expect SmartScreen on Windows and Gatekeeper on macOS
   for first launch; say so in the release notes.
 - Release checklist: bump `Cargo.toml` → merge the `dev` → `main` PR → push tag →
@@ -109,14 +121,17 @@ Rules:
 
 ## Locked decisions
 
-- Rust 1.89, edition 2024.
+- Rust 1.98 minimum (required by `gpui-icons` 0.7.0), edition 2024;
+  `rust-toolchain.toml` pins the same version and CI has a `+1.98 --locked` job.
 - UI toolkit is gpui: `gpui-pre`/`gpui-pre-platform` 0.3.12 with the `gpui-kit`
-  0.10 component library and `gpui-icons` 0.7 (Lucide). eframe, egui and
+  0.10.0 component library and `gpui-icons` 0.7.0 (Lucide), both pinned exactly
+  so a caret bump cannot drag in an incompatible UI stack. eframe, egui and
   egui-phosphor are gone for good; do not reintroduce a second UI stack.
 - Colors live in `src/ui/style.rs` (`Tokens` + `tokens(mode)`); `ui::shell`
   pushes the same palette into gpui-kit's global theme. Kit widgets read the
   kit theme, not `Tokens`, so the two must stay in sync.
-- `tray-icon` 0.24.2. Do not bump to 0.26 until Rust 1.90.
+- `tray-icon` stays pinned to 0.24.2; newer majors require a separate
+  compatibility review and toolchain bump.
 - `global-hotkey` 0.10 for exclusive global hotkeys.
 - `enigo` 0.6.1 for cross-platform volume/scroll/key/mouse/text injection.
 - TOML config, versioned, atomic writes.
@@ -208,7 +223,9 @@ Rules:
   inherited from its parent: always pass `text_color` to the `Label` itself, and
   keep `ui::shell::sync_kit_theme` in step with `style::tokens` on every theme
   change. `ui::style` tests guard the contrast of both palettes.
-- Error handling: `thiserror` in libraries, `anyhow` only in the composition root.
+- Error handling: `thiserror` in libraries, `anyhow` only in the composition
+  root. The single exception is `ui::assets`: `gpui::AssetSource` forces
+  `anyhow::Result` on `load`/`list`, so that module must speak `anyhow`.
 - No Tokio, Tauri, Electron, WebView, kernel driver or virtual HID.
 - Keep `unsafe` out of the codebase unless a platform adapter cannot be implemented
   otherwise; isolate and document it.
@@ -230,6 +247,9 @@ configuration lives in a toolkit-independent folder:
 
 - `ROADMAP.md`: authoritative M0–M6 checklist.
 - `README.md`: public overview.
-- `.github/workflows/ci.yml`: exact CI matrix and Linux dependencies.
-- `.github/workflows/release.yml`: CD — installers and portable archives per
+- `.github/workflows/ci.yml`: exact CI matrix and shared Linux dependencies.
+- `.github/workflows/release.yml`: CD — installers and binary archives per
   published release; packaging inputs in `packaging/`.
+- `.github/workflows/validate-packaging.yml`: workflow, shell and NSIS checks.
+- `.github/workflows/security.yml`: weekly dependency advisories.
+- `.github/dependabot.yml`: Cargo and GitHub Actions update policy.

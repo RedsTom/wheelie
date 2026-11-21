@@ -1,4 +1,12 @@
 //! Radial wheel geometry used by the overlay.
+//!
+//! # Angle convention
+//!
+//! Angles are radians in screen coordinates: zero points right, positive
+//! angles run clockwise because the Y axis grows downward. The first sector is
+//! centered on the top of the wheel (`-PI/2`) and sector indices increase
+//! clockwise. Every public angle method uses this convention, so a UI only has
+//! to hand over coordinates in the same space.
 
 /// Radial wheel geometry in plain coordinates, independent from any UI crate.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,7 +23,20 @@ pub struct WheelGeometry {
 
 impl WheelGeometry {
     /// Creates geometry from a center point and radii.
+    ///
+    /// Debug builds check that the radii are finite and that the inner circle
+    /// fits inside the outer ring. Release builds keep the method allocation
+    /// free; callers that accept untrusted values must validate them first.
     pub fn new(center_x: f32, center_y: f32, outer_radius: f32, inner_radius: f32) -> Self {
+        debug_assert!(center_x.is_finite(), "center_x must be finite");
+        debug_assert!(center_y.is_finite(), "center_y must be finite");
+        debug_assert!(outer_radius.is_finite(), "outer_radius must be finite");
+        debug_assert!(inner_radius.is_finite(), "inner_radius must be finite");
+        debug_assert!(outer_radius > 0.0, "outer_radius must be positive");
+        debug_assert!(
+            inner_radius >= 0.0 && inner_radius < outer_radius,
+            "inner_radius must fit inside the outer radius"
+        );
         Self {
             center_x,
             center_y,
@@ -26,6 +47,7 @@ impl WheelGeometry {
 
     /// Creates geometry for a square of the given size, centered on it.
     pub fn from_size(size: f32) -> Self {
+        debug_assert!(size.is_finite() && size > 0.0, "size must be positive");
         let half = size / 2.0;
         Self::new(half, half, half * 0.92, half * 0.36)
     }
@@ -147,6 +169,25 @@ mod tests {
         assert!((end - next_start).abs() < f32::EPSILON);
         assert_eq!(geometry.sector_angles(4, 4), None);
         assert_eq!(geometry.sector_angles(0, 0), None);
+    }
+
+    #[test]
+    fn sector_angles_and_sector_at_round_trip() {
+        let geometry = geometry();
+        let radius = (geometry.inner_radius + geometry.outer_radius) / 2.0;
+        for count in 1..=8 {
+            for index in 0..count {
+                let (start, end) = geometry.sector_angles(index, count).expect("sector");
+                let middle = (start + end) / 2.0;
+                let x = geometry.center_x + middle.cos() * radius;
+                let y = geometry.center_y + middle.sin() * radius;
+                assert_eq!(
+                    geometry.sector_at(count, x, y),
+                    Some(index),
+                    "round trip failed for sector {index}/{count}"
+                );
+            }
+        }
     }
 
     #[test]

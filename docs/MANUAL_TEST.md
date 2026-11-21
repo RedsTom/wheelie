@@ -59,9 +59,9 @@ each target platform before a release.
 ## Action sets
 
 - [ ] Open **Actions**: the volume, vertical scroll, horizontal scroll and media
-      sets are listed, each with an icon. On macOS the brightness set is listed
-      too; on Windows and Linux it is absent and brightness is not offered in the
-      picker.
+      sets are listed, each with an icon. A brightness set is also offered on
+      Windows, macOS and Linux; it uses WMI laptop panels on Windows,
+      `brightnessctl` on Linux and brightness keys on macOS.
 - [ ] Create a set, rename it, pick another icon and assign actions.
 - [ ] Delete a set: it disappears from the wheel, and the active set moves to the
       first remaining set when it was active.
@@ -88,8 +88,12 @@ each target platform before a release.
       foreground window.
 - [ ] Make the scroll set active and turn the knob inside a long document: the
       view scrolls in the expected direction.
-- [ ] On macOS, make the brightness set active and verify brightness changes. On
-      Windows and Linux, check that a clear unavailable message is reported.
+- [ ] Make the brightness set active. On Windows, verify that a laptop panel's
+      level changes through WMI `WmiMonitorBrightnessMethods`; on Linux, that
+      `brightnessctl` changes the level; on macOS, that the brightness keys
+      change the display (no percentage is reported there).
+- [ ] On a display without brightness control, run the brightness action: a
+      clear error is reported and no other setting changes.
 - [ ] Assign a keyboard shortcut (for example `Ctrl+C`) to press and verify the
       shortcut reaches the focused application.
 - [ ] Assign a mouse click to press and verify the click lands under the cursor.
@@ -153,3 +157,37 @@ each target platform before a release.
 - [ ] Disconnect the network, start Wheelie: no notice, no error dialog; the
       log records that the release feed was unavailable and everything else
       works.
+
+## Packaged builds
+
+For each published release, download all eight assets and check them on a clean
+machine. The `portable` part of a Linux archive filename is historical: it is a
+binary archive that needs the system libraries listed in the README.
+
+| Platform | Artifacts to check |
+| --- | --- |
+| Windows x64 | `Wheelie-<ver>-win-x64-setup.exe`, `Wheelie-<ver>-win-x64-portable.zip` |
+| macOS universal | `Wheelie-<ver>-macos-universal.dmg`, `Wheelie-<ver>-macos-portable.zip` |
+| Linux x64 | `wheelie_<ver>_amd64.deb`, `wheelie-<ver>-1.x86_64.rpm`, `Wheelie-<ver>-x86_64.AppImage`, `Wheelie-<ver>-linux-x64-portable.tar.gz` |
+
+- [ ] Windows: run the NSIS installer, confirm the Start-menu entry and the
+      uninstall entry, launch the installed build and repeat the first-launch
+      checks. Expect a SmartScreen warning on first launch; after "More info"
+      the app must start normally.
+- [ ] Windows: unzip the archive, launch `wheelie.exe` from the extracted
+      folder, and confirm it runs without an installer.
+- [ ] macOS: open the `.dmg`, drag the app to Applications and launch it.
+      Expect one Gatekeeper confirmation (right-click → Open) because the build
+      is ad-hoc signed only. Verify the app is universal with
+      `lipo -info Wheelie.app/Contents/MacOS/wheelie`.
+- [ ] macOS: unzip the portable archive and launch the contained app the same
+      way.
+- [ ] Linux: install the `.deb` and `.rpm` on clean systems, launch Wheelie from
+      the desktop menu, and verify the desktop entry and icon are present.
+- [ ] Linux: run the `.AppImage` directly and confirm it starts with only the
+      host graphics stack installed.
+- [ ] Linux: extract the `.tar.gz`, run `./install-desktop.sh`, confirm the menu
+      entry points at the extracted binary, and launch it from the menu.
+- [ ] On every platform, compare the in-app version with the release tag and
+      confirm the tray icon and the radial wheel still work from the packaged
+      build.

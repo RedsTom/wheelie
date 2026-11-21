@@ -37,12 +37,13 @@ pub fn level() -> Result<Level, PlatformError> {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::*;
+    use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
         IMMDeviceEnumerator, MMDeviceEnumerator, eMultimedia, eRender,
     };
     use windows::Win32::System::Com::{
-        CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
+        CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
     };
 
     /// Balances `CoInitializeEx` on the calling thread when it succeeded.
@@ -51,14 +52,19 @@ mod imp {
     }
 
     impl ComScope {
-        fn enter() -> Self {
-            // SAFETY: COM is initialized on the current thread with a
-            // matching `CoUninitialize` in `Drop`. A failed call (for example
-            // the thread already uses another apartment) is tolerated.
-            let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-            Self {
-                initialized: hr.is_ok(),
+        fn enter() -> Result<Self, PlatformError> {
+            // SAFETY: COM is initialised once on the current thread in the
+            // multi-threaded apartment, with a matching `CoUninitialize` in
+            // `Drop` (also for `S_FALSE`, which still needs balancing).
+            let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            if hr.is_err() {
+                let error = windows::core::Error::from(hr);
+                if hr == RPC_E_CHANGED_MODE {
+                    tracing::debug!(%error, "thread already uses another COM apartment");
+                }
+                return Err(PlatformError::Com(Box::new(error)));
             }
+            Ok(Self { initialized: true })
         }
     }
 
@@ -72,7 +78,7 @@ mod imp {
     }
 
     fn map(error: windows::core::Error) -> PlatformError {
-        PlatformError::Other(error.to_string())
+        PlatformError::Com(Box::new(error))
     }
 
     fn endpoint() -> Result<IAudioEndpointVolume, PlatformError> {
@@ -113,18 +119,23 @@ mod imp {
         10f32.powf(db / 20.0).clamp(0.0, 1.0)
     }
 
-    pub fn adjust(direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
-        let _com = ComScope::enter();
-        let volume = endpoint()?;
+    /// Signed percentage change for a direction and step count.
+    fn delta(direction: VolumeDirection, steps: u8) -> f32 {
         let sign = match direction {
             VolumeDirection::Up => 1.0,
             VolumeDirection::Down => -1.0,
         };
-        let delta = sign * f32::from(STEP_PERCENT) * f32::from(steps);
+        sign * f32::from(STEP_PERCENT) * f32::from(steps)
+    }
+
+    pub fn adjust(direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
+        let _com = ComScope::enter()?;
+        let volume = endpoint()?;
+        let change = delta(direction, steps);
         // SAFETY: the endpoint interface is valid for the whole call.
         unsafe {
             let current = volume.GetMasterVolumeLevelScalar().map_err(map)?;
-            let next = percent_to_scalar(scalar_to_percent(current) + delta);
+            let next = percent_to_scalar(scalar_to_percent(current) + change);
             volume
                 .SetMasterVolumeLevelScalar(next, std::ptr::null())
                 .map_err(map)?;
@@ -133,7 +144,7 @@ mod imp {
     }
 
     pub fn toggle_mute() -> Result<(), PlatformError> {
-        let _com = ComScope::enter();
+        let _com = ComScope::enter()?;
         let volume = endpoint()?;
         // SAFETY: the endpoint interface is valid for the whole call.
         unsafe {
@@ -144,7 +155,7 @@ mod imp {
     }
 
     pub fn level() -> Result<Level, PlatformError> {
-        let _com = ComScope::enter();
+        let _com = ComScope::enter()?;
         let volume = endpoint()?;
         // SAFETY: the endpoint interface is valid for the whole call.
         unsafe {
@@ -156,11 +167,33 @@ mod imp {
             })
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn scalar_and_slider_round_trip() {
+            assert_eq!(scalar_to_percent(0.0), 0.0);
+            assert_eq!(scalar_to_percent(1.0), 100.0);
+            assert!((scalar_to_percent(0.5) - 87.96).abs() < 0.1);
+            assert_eq!(percent_to_scalar(0.0), 0.0);
+            assert_eq!(percent_to_scalar(100.0), 1.0);
+            assert!((percent_to_scalar(scalar_to_percent(0.5)) - 0.5).abs() < 0.001);
+        }
+
+        #[test]
+        fn delta_follows_direction_and_step_count() {
+            assert_eq!(delta(VolumeDirection::Up, 2), 4.0);
+            assert_eq!(delta(VolumeDirection::Down, 3), -6.0);
+        }
+    }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(unix, not(target_os = "macos")))]
 mod imp {
     use super::*;
+    use std::io::ErrorKind;
     use std::process::Command;
 
     fn run(program: &str, args: &[&str]) -> Result<(), PlatformError> {
@@ -186,19 +219,36 @@ mod imp {
         }
     }
 
-    /// Runs `wpctl` (PipeWire) and falls back to `pactl` (PulseAudio).
-    fn with_fallback(wpctl: &[&str], pactl: &[&str]) -> Result<(), PlatformError> {
-        run("wpctl", wpctl).or_else(|_| run("pactl", pactl))
+    /// Whether the primary tool is simply not installed.
+    fn missing(error: &PlatformError) -> bool {
+        matches!(error, PlatformError::Io(source) if source.kind() == ErrorKind::NotFound)
     }
 
-    pub fn adjust(direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
+    /// Runs `wpctl` (PipeWire) and falls back to `pactl` (PulseAudio).
+    ///
+    /// A missing `wpctl` is the normal fallback case. An unexpected failure is
+    /// returned as-is: retrying through another backend would hide the real
+    /// cause (for example a denied permission).
+    fn with_fallback(wpctl: &[&str], pactl: &[&str]) -> Result<(), PlatformError> {
+        match run("wpctl", wpctl) {
+            Ok(()) => Ok(()),
+            Err(primary) if missing(&primary) => run("pactl", pactl),
+            Err(primary) => Err(primary),
+        }
+    }
+
+    /// Percentage payloads for both backends.
+    fn deltas(direction: VolumeDirection, steps: u8) -> (String, String) {
         let sign = match direction {
             VolumeDirection::Up => "+",
             VolumeDirection::Down => "-",
         };
         let amount = u32::from(STEP_PERCENT) * u32::from(steps);
-        let wpctl_delta = format!("{amount}%{sign}");
-        let pactl_delta = format!("{sign}{amount}%");
+        (format!("{amount}%{sign}"), format!("{sign}{amount}%"))
+    }
+
+    pub fn adjust(direction: VolumeDirection, steps: u8) -> Result<(), PlatformError> {
+        let (wpctl_delta, pactl_delta) = deltas(direction, steps);
         with_fallback(
             &[
                 "set-volume",
@@ -244,7 +294,41 @@ mod imp {
     }
 
     pub fn level() -> Result<Level, PlatformError> {
-        wpctl_level().or_else(|_| pactl_level())
+        match wpctl_level() {
+            Ok(level) => Ok(level),
+            Err(primary) if missing(&primary) => pactl_level(),
+            Err(primary) => Err(primary),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn deltas_match_each_backend_syntax() {
+            assert_eq!(
+                deltas(VolumeDirection::Up, 2),
+                ("4%+".to_owned(), "+4%".to_owned())
+            );
+            assert_eq!(
+                deltas(VolumeDirection::Down, 3),
+                ("6%-".to_owned(), "-6%".to_owned())
+            );
+        }
+
+        #[test]
+        fn only_a_missing_tool_is_a_fallback_case() {
+            let not_found =
+                PlatformError::Io(std::io::Error::new(ErrorKind::NotFound, "wpctl missing"));
+            let denied = PlatformError::Io(std::io::Error::new(
+                ErrorKind::PermissionDenied,
+                "wpctl denied",
+            ));
+            assert!(missing(&not_found));
+            assert!(!missing(&denied));
+            assert!(!missing(&PlatformError::Other("wpctl failed".to_owned())));
+        }
     }
 }
 
@@ -300,7 +384,7 @@ mod imp {
     }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "windows", unix)))]
 mod imp {
     use super::*;
 

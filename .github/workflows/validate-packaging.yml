@@ -1,0 +1,84 @@
+name: Validate packaging
+
+on:
+  push:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/validate-packaging.yml"
+      - ".github/dependabot.yml"
+      - "assets/icons/app.ico"
+      - "assets/logo/**"
+      - "LICENSE"
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/validate-packaging.yml"
+      - ".github/dependabot.yml"
+      - "assets/icons/app.ico"
+      - "assets/logo/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACTIONLINT_VERSION: v1.7.12
+
+jobs:
+  lint:
+    name: Workflows and packaging scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install \
+            "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Install shellcheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+
+      - name: Lint workflows
+        run: actionlint -color -oneline
+
+      - name: Check shell syntax and style
+        run: |
+          shopt -s globstar
+          mapfile -t scripts < <(printf '%s\n' packaging/**/*.sh)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "::error::No packaging shell scripts found"
+            exit 1
+          fi
+          bash -n "${scripts[@]}"
+          shellcheck "${scripts[@]}"
+
+      - name: Compile the NSIS script when makensis is available
+        run: |
+          if ! command -v makensis >/dev/null 2>&1; then
+            echo "makensis is not installed; skipping the NSIS compile check"
+            exit 0
+          fi
+          : > "$RUNNER_TEMP/wheelie.exe"
+          makensis \
+            /DAPP_VERSION=0.0.0 \
+            "/DBINARY=$RUNNER_TEMP/wheelie.exe" \
+            "/DICON=$GITHUB_WORKSPACE/assets/icons/app.ico" \
+            "/DLICENSE=$GITHUB_WORKSPACE/LICENSE" \
+            "/DOUTFILE=$RUNNER_TEMP/wheelie-test-setup.exe" \
+            packaging/windows/installer.nsi

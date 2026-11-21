@@ -1,7 +1,9 @@
 //! Normalized key codes, modifiers and chords.
 //!
 //! The domain never talks to an operating system. Platform crates map these
-//! values to native representations later.
+//! values to native representations later. The key list is a closed set: a new
+//! key is added in a future configuration version rather than guessed from an
+//! unknown stored name, which is rejected during validation.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -206,9 +208,18 @@ impl FromStr for Modifiers {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        // An entirely empty string means "no modifiers" and is the only form
+        // that tolerates an empty segment. Every other empty segment is a typo.
+        if value.trim().is_empty() {
+            return Ok(Self::default());
+        }
         let mut modifiers = Self::default();
-        for part in value.split('+').filter(|part| !part.trim().is_empty()) {
-            match part.trim().to_ascii_uppercase().as_str() {
+        for part in value.split('+') {
+            let part = part.trim();
+            if part.is_empty() {
+                return Err(format!("empty modifier in {value:?}"));
+            }
+            match part.to_ascii_uppercase().as_str() {
                 "CTRL" | "CONTROL" => modifiers.control = true,
                 "ALT" | "OPTION" => modifiers.alt = true,
                 "SHIFT" => modifiers.shift = true,
@@ -327,6 +338,9 @@ impl FromStr for KeyChord {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let value = value.trim();
+        if value.is_empty() || value.split('+').any(|part| part.trim().is_empty()) {
+            return Err(format!("invalid key chord: {value:?}"));
+        }
         let (modifiers_part, key_part) = match value.rfind('+') {
             Some(index) => (&value[..index], &value[index + 1..]),
             None => ("", value),
@@ -433,6 +447,23 @@ mod tests {
     fn chord_rejects_missing_key() {
         assert!("Ctrl+".parse::<KeyChord>().is_err());
         assert!("Ctrl+NotAKey".parse::<KeyChord>().is_err());
+    }
+
+    #[test]
+    fn chord_rejects_empty_segments() {
+        assert!("Ctrl++F13".parse::<KeyChord>().is_err());
+        assert!("+F13".parse::<KeyChord>().is_err());
+        assert!("Ctrl+ +F13".parse::<KeyChord>().is_err());
+        assert!("Ctrl+F13+".parse::<KeyChord>().is_err());
+    }
+
+    #[test]
+    fn modifiers_accept_only_the_entirely_empty_string() {
+        assert_eq!("".parse::<Modifiers>(), Ok(Modifiers::default()));
+        assert_eq!("   ".parse::<Modifiers>(), Ok(Modifiers::default()));
+        assert!("Ctrl+".parse::<Modifiers>().is_err());
+        assert!("+Ctrl".parse::<Modifiers>().is_err());
+        assert!("Ctrl++Alt".parse::<Modifiers>().is_err());
     }
 
     #[test]

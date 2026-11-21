@@ -2,10 +2,15 @@
 
 use crate::core::action_set::{
     ActionSet, MEDIA_SET_ID, NONE_SET_ID, SCROLL_HORIZONTAL_SET_ID, default_sets,
-    horizontal_scroll_set, is_legacy_default_volume_set, media_set, none_set,
+    horizontal_scroll_set, is_default_brightness_set, is_legacy_default_volume_set, media_set,
+    none_set,
 };
-use crate::core::gesture::{GestureConfig, GestureConfigError};
-use crate::core::i18n::Language;
+use crate::core::gesture::{
+    Control, DEFAULT_DOUBLE_CLICK_MS, DEFAULT_ROTATION_DEBOUNCE_MS, GestureConfig,
+    GestureConfigError,
+};
+use crate::core::i18n::{Language, TextKey, tr};
+use crate::core::key::KeyChord;
 use crate::core::macro_engine::{MacroDefinition, MacroError};
 use crate::core::profile::{Profile, ProfileError};
 use crate::core::theme::ThemeMode;
@@ -33,12 +38,31 @@ fn default_true() -> bool {
     true
 }
 
+/// Documents written before the schema was versioned are treated as v1 so the
+/// regular upgrade path can bring them up to the current version.
+fn default_version() -> u32 {
+    LEGACY_VERSION_1
+}
+
 fn default_double_click_ms() -> u64 {
-    350
+    DEFAULT_DOUBLE_CLICK_MS
 }
 
 fn default_rotation_debounce_ms() -> u64 {
-    20
+    DEFAULT_ROTATION_DEBOUNCE_MS
+}
+
+/// Case-insensitive, whitespace-insensitive form used for name uniqueness.
+fn normalize_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+/// A profile without a hardware identifier claims every device.
+fn device_ids_overlap(first: Option<&str>, second: Option<&str>) -> bool {
+    match (first, second) {
+        (None, _) | (_, None) => true,
+        (Some(first), Some(second)) => first == second,
+    }
 }
 
 /// General application settings.
@@ -94,7 +118,8 @@ impl GeneralConfig {
 /// Root configuration document stored as TOML.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
-    /// Schema version.
+    /// Schema version, absent from documents written before versioning.
+    #[serde(default = "default_version")]
     pub version: u32,
     /// Interface language.
     #[serde(default)]
@@ -157,7 +182,11 @@ impl Config {
             general: GeneralConfig::default(),
             onboarding_complete: false,
             active_profile: Some("default".to_owned()),
-            profiles: vec![Profile::new("default", "Default", bindings)],
+            profiles: vec![Profile::new(
+                "default",
+                tr(language, TextKey::ProfileDefaultName),
+                bindings,
+            )],
             active_set,
             action_sets: sets,
             macros: Vec::new(),
@@ -169,10 +198,9 @@ impl Config {
     /// Called when the platform input backend cannot change the brightness, so
     /// a document written by another platform does not keep a dead set.
     pub fn remove_default_brightness_set(&mut self) {
-        use crate::core::action_set::is_default_brightness_set;
-
+        let language = self.language;
         self.action_sets
-            .retain(|set| !is_default_brightness_set(set));
+            .retain(|set| !is_default_brightness_set(set, language));
 
         if let Some(active) = self.active_set.as_deref()
             && !self.action_sets.iter().any(|set| set.id == active)
@@ -189,16 +217,21 @@ impl Config {
             .collect()
     }
 
-    /// The active profile, if it exists.
+    /// The active profile, when it exists and is enabled.
     pub fn active_profile(&self) -> Option<&Profile> {
         let id = self.active_profile.as_deref()?;
-        self.profiles.iter().find(|profile| profile.id == id)
+        self.profiles
+            .iter()
+            .find(|profile| profile.id == id && profile.enabled)
     }
 
-    /// Index of the active profile in [`Self::profiles`], when it exists.
+    /// Index of the active profile in [`Self::profiles`], when it exists and
+    /// is enabled.
     pub fn active_profile_index(&self) -> Option<usize> {
         let id = self.active_profile.as_deref()?;
-        self.profiles.iter().position(|profile| profile.id == id)
+        self.profiles
+            .iter()
+            .position(|profile| profile.id == id && profile.enabled)
     }
 
     /// The active action set, if it exists.
@@ -213,6 +246,11 @@ impl Config {
     }
 
     /// Validates the whole document.
+    ///
+    /// Chord uniqueness is keyed by `(device_id, chord)`. In v1 most profiles
+    /// have no device identifier, which means "any device": two such profiles
+    /// must never claim the same chord. Once hardware identifiers are stored,
+    /// profiles bound to distinct devices may reuse a chord.
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.version != CONFIG_VERSION {
             return Err(ConfigError::UnsupportedVersion(self.version));
@@ -224,9 +262,14 @@ impl Config {
             .map_err(ConfigError::from)?;
 
         let mut profile_ids = HashSet::new();
+        let mut profile_names = HashSet::new();
+        let mut claimed_chords: Vec<(String, Option<String>, KeyChord)> = Vec::new();
         for profile in &self.profiles {
             if !profile_ids.insert(profile.id.clone()) {
                 return Err(ConfigError::DuplicateProfileId(profile.id.clone()));
+            }
+            if !profile_names.insert(normalize_name(&profile.name)) {
+                return Err(ConfigError::DuplicateProfileName(profile.name.clone()));
             }
             profile
                 .validate()
@@ -234,11 +277,27 @@ impl Config {
                     id: profile.id.clone(),
                     source,
                 })?;
+
+            for control in [Control::Left, Control::Right, Control::Press] {
+                let chord = profile.bindings.chord_for(control);
+                for (other_id, other_device, other_chord) in &claimed_chords {
+                    if *other_chord == chord
+                        && device_ids_overlap(other_device.as_deref(), profile.device_id.as_deref())
+                    {
+                        return Err(ConfigError::ConflictingProfileBinding {
+                            first: other_id.clone(),
+                            second: profile.id.clone(),
+                            chord: chord.to_string(),
+                        });
+                    }
+                }
+                claimed_chords.push((profile.id.clone(), profile.device_id.clone(), chord));
+            }
         }
 
         let mut macro_names = HashSet::new();
         for macro_def in &self.macros {
-            if !macro_names.insert(macro_def.name.clone()) {
+            if !macro_names.insert(normalize_name(&macro_def.name)) {
                 return Err(ConfigError::DuplicateMacroName(macro_def.name.clone()));
             }
             macro_def
@@ -247,6 +306,10 @@ impl Config {
                     name: macro_def.name.clone(),
                     source,
                 })?;
+        }
+
+        if self.action_sets.is_empty() {
+            return Err(ConfigError::EmptyActionSets);
         }
 
         let known_macros = self.macro_names();
@@ -262,7 +325,7 @@ impl Config {
             if set.name.trim().is_empty() {
                 return Err(ConfigError::EmptySetName(set.id.clone()));
             }
-            if !set_names.insert(set.name.to_lowercase()) {
+            if !set_names.insert(normalize_name(&set.name)) {
                 return Err(ConfigError::DuplicateSetName(set.name.clone()));
             }
             for (control, action) in [
@@ -280,10 +343,13 @@ impl Config {
             }
         }
 
-        if let Some(active) = self.active_profile.as_deref()
-            && !profile_ids.contains(active)
-        {
-            return Err(ConfigError::MissingActiveProfile(active.to_owned()));
+        if let Some(active) = self.active_profile.as_deref() {
+            let Some(profile) = self.profiles.iter().find(|profile| profile.id == active) else {
+                return Err(ConfigError::MissingActiveProfile(active.to_owned()));
+            };
+            if !profile.enabled {
+                return Err(ConfigError::DisabledActiveProfile(active.to_owned()));
+            }
         }
 
         if let Some(active) = self.active_set.as_deref()
@@ -342,8 +408,9 @@ impl Config {
         }
 
         if self.version == LEGACY_VERSION_4 {
+            let language = self.language;
             for set in &mut self.action_sets {
-                if is_legacy_default_volume_set(set) {
+                if is_legacy_default_volume_set(set, language) {
                     set.actions.press = crate::core::action::Action::Mute;
                 }
             }
@@ -356,9 +423,18 @@ impl Config {
                     .iter()
                     .position(|set| set.id == NONE_SET_ID)
                     .unwrap_or(self.action_sets.len());
-                self.action_sets.insert(insert_at, media_set(self.language));
+                self.action_sets.insert(insert_at, media_set(language));
             }
             self.version = CONFIG_VERSION;
+        }
+
+        // A document with no sets at all cannot drive the wheel. Repair it
+        // with the defaults instead of leaving an unusable configuration.
+        if self.action_sets.is_empty() {
+            self.action_sets = default_sets(self.language, true);
+            if self.active_set.is_none() {
+                self.active_set = self.action_sets.first().map(|set| set.id.clone());
+            }
         }
     }
 }
@@ -395,6 +471,21 @@ pub enum ConfigError {
     /// Two profiles share an identifier.
     #[error("duplicate profile id: {0}")]
     DuplicateProfileId(String),
+
+    /// Two profiles share a display name.
+    #[error("duplicate profile name: {0}")]
+    DuplicateProfileName(String),
+
+    /// Two profiles claim the same chord on overlapping devices.
+    #[error("profiles {first} and {second} both bind {chord}")]
+    ConflictingProfileBinding {
+        /// Identifier of the first profile.
+        first: String,
+        /// Identifier of the second profile.
+        second: String,
+        /// The conflicting chord.
+        chord: String,
+    },
 
     /// A macro is invalid.
     #[error("invalid macro {name}: {source}")]
@@ -438,9 +529,17 @@ pub enum ConfigError {
     #[error("duplicate action set name: {0}")]
     DuplicateSetName(String),
 
+    /// No action set is available.
+    #[error("at least one action set is required")]
+    EmptyActionSets,
+
     /// The active profile does not exist.
     #[error("active profile not found: {0}")]
     MissingActiveProfile(String),
+
+    /// The active profile is disabled.
+    #[error("active profile is disabled: {0}")]
+    DisabledActiveProfile(String),
 
     /// The active action set does not exist.
     #[error("active action set not found: {0}")]
@@ -453,8 +552,8 @@ mod tests {
     use crate::core::SetIcon;
     use crate::core::action::{Action, VolumeDirection};
     use crate::core::action_set::{BRIGHTNESS_SET_ID, VOLUME_SET_ID};
-    use crate::core::gesture::{Bindings, Control};
-    use crate::core::key::{KeyChord, KeyCode};
+    use crate::core::gesture::Bindings;
+    use crate::core::key::KeyCode;
 
     fn bindings() -> Bindings {
         Bindings {
@@ -488,6 +587,19 @@ mod tests {
         assert!(config.active_profile().is_some());
         assert!(config.active_set().is_some());
         assert_eq!(config.action_sets.len(), 6);
+    }
+
+    #[test]
+    fn default_profile_name_is_translated() {
+        let config = Config::default_with(true);
+        assert_eq!(
+            config.profiles[0].name,
+            tr(Language::Fr, TextKey::ProfileDefaultName)
+        );
+        assert_ne!(
+            config.profiles[0].name,
+            tr(Language::En, TextKey::ProfileDefaultName)
+        );
     }
 
     #[test]
@@ -624,7 +736,7 @@ mod tests {
             .iter_mut()
             .find(|set| set.id == VOLUME_SET_ID)
         {
-            volume.actions.left = Action::Mute;
+            volume.actions.press = Action::Mute;
         }
         let document = toml::to_string_pretty(&config).expect("serialize");
 
@@ -634,6 +746,28 @@ mod tests {
             .iter()
             .find(|set| set.id == VOLUME_SET_ID)
             .expect("volume set");
+        assert_eq!(volume.actions.press, Action::Mute);
+    }
+
+    #[test]
+    fn renamed_volume_set_preserves_press() {
+        let mut config = legacy_config_v4();
+        if let Some(volume) = config
+            .action_sets
+            .iter_mut()
+            .find(|set| set.id == VOLUME_SET_ID)
+        {
+            volume.name = "My volume".to_owned();
+        }
+        let document = toml::to_string_pretty(&config).expect("serialize");
+
+        let parsed = Config::from_toml_str(&document).expect("upgrade");
+        let volume = parsed
+            .action_sets
+            .iter()
+            .find(|set| set.id == VOLUME_SET_ID)
+            .expect("volume set");
+        assert_eq!(volume.name, "My volume");
         assert_eq!(volume.actions.press, Action::None);
     }
 
@@ -807,6 +941,107 @@ mod tests {
     }
 
     #[test]
+    fn disabled_profile_cannot_be_active() {
+        let mut config = Config::default();
+        config.profiles[0].enabled = false;
+
+        assert!(config.active_profile().is_none());
+        assert_eq!(config.active_profile_index(), None);
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DisabledActiveProfile(id)) if id == "default"
+        ));
+
+        config.active_profile = None;
+        config.validate().expect("no active profile is valid");
+    }
+
+    #[test]
+    fn config_rejects_duplicate_profile_names() {
+        let mut config = Config::default();
+        let mut second = Profile::new("second", config.profiles[0].name.clone(), bindings());
+        second.device_id = Some("keyboard-2".to_owned());
+        config.profiles.push(second);
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateProfileName(name)) if name == config.profiles[0].name
+        ));
+    }
+
+    #[test]
+    fn config_normalizes_names_for_uniqueness() {
+        let mut config = Config::default();
+        config.profiles[0].name = "  My Keyboard  ".to_owned();
+        config
+            .profiles
+            .push(Profile::new("second", "my keyboard", bindings()));
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateProfileName(_))
+        ));
+
+        let mut config = Config::default();
+        config.action_sets[0].name = "  My Volume ".to_owned();
+        config.action_sets[1].name = "my volume".to_owned();
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateSetName(_))
+        ));
+
+        let mut config = Config::default();
+        let mut macro_def = crate::core::MacroDefinition {
+            name: " Copy ".to_owned(),
+            steps: vec![crate::core::MacroStep::Delay { ms: 0 }],
+        };
+        config.macros.push(macro_def.clone());
+        macro_def.name = "copy".to_owned();
+        config.macros.push(macro_def);
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::DuplicateMacroName(_))
+        ));
+    }
+
+    #[test]
+    fn config_rejects_conflicting_bindings_on_overlapping_devices() {
+        let mut config = Config::default();
+        let same_bindings = config.profiles[0].bindings;
+        config
+            .profiles
+            .push(Profile::new("second", "Second", same_bindings));
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::ConflictingProfileBinding { first, second, .. })
+                if first == "default" && second == "second"
+        ));
+    }
+
+    #[test]
+    fn distinct_devices_may_reuse_a_chord() {
+        let mut config = Config::default();
+        config.profiles[0].device_id = Some("keyboard-1".to_owned());
+        let mut second = Profile::new("second", "Second", config.profiles[0].bindings);
+        second.device_id = Some("keyboard-2".to_owned());
+        config.profiles.push(second);
+
+        config.validate().expect("distinct devices may overlap");
+    }
+
+    #[test]
+    fn config_rejects_an_empty_set_list() {
+        let config = Config {
+            action_sets: Vec::new(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::EmptyActionSets)
+        ));
+    }
+
+    #[test]
     fn untouched_brightness_set_is_removed_without_backend_support() {
         let mut config = Config {
             active_set: Some(BRIGHTNESS_SET_ID.to_owned()),
@@ -840,6 +1075,78 @@ mod tests {
                 .iter()
                 .any(|set| set.id == BRIGHTNESS_SET_ID)
         );
+    }
+
+    #[test]
+    fn renamed_brightness_set_is_kept() {
+        let mut config = Config {
+            active_set: Some(BRIGHTNESS_SET_ID.to_owned()),
+            ..Default::default()
+        };
+        config.action_sets[1].name = "Screen".to_owned();
+
+        config.remove_default_brightness_set();
+
+        let brightness = config
+            .action_sets
+            .iter()
+            .find(|set| set.id == BRIGHTNESS_SET_ID)
+            .expect("renamed set must be kept");
+        assert_eq!(brightness.name, "Screen");
+        assert_eq!(config.active_set.as_deref(), Some(BRIGHTNESS_SET_ID));
+    }
+
+    const FIXTURE_UNVERSIONED: &str = "language = \"en\"\n";
+    const FIXTURE_V1: &str = "version = 1\n";
+    const FIXTURE_V2: &str = "version = 2\n";
+    const FIXTURE_V3: &str = "version = 3\n";
+    const FIXTURE_V4: &str = "version = 4\n";
+    const FIXTURE_V5: &str = "version = 5\n";
+    const FIXTURE_V4_WITH_PROFILE: &str = "\
+version = 4
+language = \"en\"
+active_profile = \"default\"
+
+[[profiles]]
+id = \"default\"
+name = \"Default\"
+enabled = true
+bindings = { left = \"F13\", right = \"F14\", press = \"F15\" }
+
+[[action_sets]]
+id = \"volume\"
+name = \"Volume\"
+icon = \"volume\"
+";
+
+    #[test]
+    fn raw_toml_fixtures_upgrade_to_the_current_version() {
+        for (label, document) in [
+            ("unversioned", FIXTURE_UNVERSIONED),
+            ("v1", FIXTURE_V1),
+            ("v2", FIXTURE_V2),
+            ("v3", FIXTURE_V3),
+            ("v4", FIXTURE_V4),
+            ("v5", FIXTURE_V5),
+        ] {
+            let parsed =
+                Config::from_toml_str(document).unwrap_or_else(|error| panic!("{label}: {error}"));
+            assert_eq!(parsed.version, CONFIG_VERSION, "{label}");
+            assert!(!parsed.action_sets.is_empty(), "{label}");
+            assert!(parsed.active_set_or_first().is_some(), "{label}");
+        }
+    }
+
+    #[test]
+    fn raw_version_four_fixture_keeps_its_profile() {
+        let parsed = Config::from_toml_str(FIXTURE_V4_WITH_PROFILE).expect("upgrade");
+        assert_eq!(parsed.version, CONFIG_VERSION);
+        assert_eq!(parsed.language, Language::En);
+        assert_eq!(parsed.active_profile.as_deref(), Some("default"));
+        assert_eq!(parsed.profiles.len(), 1);
+        assert_eq!(parsed.profiles[0].name, "Default");
+        assert_eq!(parsed.profiles[0].device_id, None);
+        assert!(parsed.action_sets.iter().any(|set| set.id == MEDIA_SET_ID));
     }
 
     #[test]

@@ -1,18 +1,25 @@
 //! Loads and saves the versioned TOML configuration.
 //!
 //! The file lives in the platform configuration directory and is written
-//! atomically: a temporary file is fully written first, then renamed over the
-//! real one. A document that cannot be parsed is kept next to the original as
-//! `config.toml.bak` and the defaults are used instead, so a hand-edited or
-//! truncated file never prevents the application from starting.
+//! atomically: a uniquely named temporary file is fully written, flushed and
+//! synced first, then renamed over the real one and the parent directory is
+//! synced. A document that cannot be parsed is kept next to the original as a
+//! timestamped `config.toml.bak.<milliseconds>` copy and the defaults are used
+//! instead, so a hand-edited or truncated file never prevents the application
+//! from starting.
 
 use super::error::AppError;
 use crate::core::{Config, ConfigError};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::warn;
 
 /// File name of the configuration document.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+static TEMPORARY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Outcome of reading the configuration at startup.
 #[derive(Debug)]
@@ -65,9 +72,11 @@ impl ConfigStore {
                 };
             }
             Err(error) => {
+                let warning = format!("could not read {}: {error}", self.path.display());
+                warn!(%warning, "configuration was not readable");
                 return LoadedConfig {
                     config: default,
-                    warning: Some(format!("could not read {}: {error}", self.path.display())),
+                    warning: Some(warning),
                 };
             }
         };
@@ -79,6 +88,7 @@ impl ConfigStore {
             },
             Err(error) => {
                 let warning = self.preserve_broken_copy(&error);
+                warn!(%warning, "invalid configuration was replaced by defaults");
                 LoadedConfig {
                     config: default,
                     warning: Some(warning),
@@ -88,29 +98,80 @@ impl ConfigStore {
     }
 
     /// Validates and writes the document atomically.
+    ///
+    /// The temporary file carries the process id and a counter, so two runs (or
+    /// two threads) can never race on the same name. Every error removes that
+    /// temporary file before it is returned.
     pub fn save(&self, config: &Config) -> Result<(), AppError> {
         let document = config.to_toml_string()?;
-
-        if let Some(parent) = self.path.parent() {
+        let parent = self.path.parent();
+        if let Some(parent) = parent {
             fs::create_dir_all(parent)?;
         }
 
-        let temporary = self.path.with_extension("toml.tmp");
-        fs::write(&temporary, document)?;
-        fs::rename(&temporary, &self.path)?;
+        let serial = TEMPORARY_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let name = format!("config.{}.{serial}.toml.tmp", std::process::id());
+        let temporary = self.path.with_file_name(name);
+
+        let result = self.write_atomic(&temporary, document.as_bytes());
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result
+    }
+
+    fn write_atomic(&self, temporary: &Path, document: &[u8]) -> Result<(), AppError> {
+        {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(temporary)?;
+            file.write_all(document)?;
+            file.sync_all()?;
+        }
+        fs::rename(temporary, &self.path)?;
+
+        // Syncing the directory makes the rename durable. Some filesystems
+        // (notably on Windows) refuse to open a directory as a file; there the
+        // rename itself is the best durability the adapter can offer.
+        if let Some(parent) = self.path.parent()
+            && let Ok(directory) = File::open(parent)
+            && let Err(error) = directory.sync_all()
+        {
+            warn!(%error, path = %parent.display(), "could not sync the configuration directory");
+        }
         Ok(())
     }
 
+    /// Keeps an invalid document under a timestamped name and describes where
+    /// it went. The warning always names a path: either the backup or, when no
+    /// copy could be made, the original file that is still on disk.
     fn preserve_broken_copy(&self, error: &ConfigError) -> String {
-        let backup = self.path.with_extension("toml.bak");
-        let moved = fs::rename(&self.path, &backup);
-        match moved {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis())
+            .unwrap_or(0);
+        let backup = self.path.with_extension(format!("toml.bak.{millis}"));
+
+        let backed_up: Result<(), std::io::Error> = match fs::rename(&self.path, &backup) {
+            Ok(()) => Ok(()),
+            Err(rename_error) => match fs::copy(&self.path, &backup) {
+                Ok(_) => {
+                    let _ = fs::remove_file(&self.path);
+                    Ok(())
+                }
+                Err(_) => Err(rename_error),
+            },
+        };
+
+        match backed_up {
             Ok(()) => format!(
                 "invalid configuration ({error}); defaults restored, previous file kept at {}",
                 backup.display()
             ),
-            Err(backup_error) => format!(
-                "invalid configuration ({error}); defaults restored, could not keep a copy: {backup_error}"
+            Err(copy_error) => format!(
+                "invalid configuration ({error}); defaults restored, could not keep a copy of {}: {copy_error}",
+                self.path.display()
             ),
         }
     }
@@ -121,20 +182,37 @@ mod tests {
     use super::*;
     use crate::core::Language;
 
-    fn temp_dir(name: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!("wheelie-{name}-{nanos}"));
-        fs::create_dir_all(&directory).expect("temp directory");
-        directory
+    /// Temporary directory removed on drop, including on test failure.
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("wheelie-{name}-{nanos}"));
+            fs::create_dir_all(&path).expect("temp directory");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
     }
 
     #[test]
     fn missing_file_yields_defaults_without_warning() {
-        let directory = temp_dir("missing");
-        let store = ConfigStore::new(directory.join(CONFIG_FILE_NAME));
+        let directory = TempDir::new("missing");
+        let store = ConfigStore::new(directory.path().join(CONFIG_FILE_NAME));
         let loaded = store.load();
         assert_eq!(loaded.config, Config::default());
         assert!(loaded.warning.is_none());
@@ -142,38 +220,64 @@ mod tests {
 
     #[test]
     fn saved_config_round_trips() {
-        let directory = temp_dir("roundtrip");
-        let store = ConfigStore::new(directory.join(CONFIG_FILE_NAME));
+        let directory = TempDir::new("roundtrip");
+        let store = ConfigStore::new(directory.path().join(CONFIG_FILE_NAME));
 
         let config = Config {
             language: Language::En,
             ..Default::default()
         };
         store.save(&config).expect("save");
+        store
+            .save(&config)
+            .expect("save again over an existing file");
 
         let loaded = store.load();
         assert_eq!(loaded.config, config);
         assert!(loaded.warning.is_none());
+        assert!(
+            fs::read_dir(directory.path())
+                .expect("read directory")
+                .all(|entry| !entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("tmp"))
+        );
     }
 
     #[test]
-    fn broken_file_is_backed_up_and_defaults_are_used() {
-        let directory = temp_dir("broken");
-        let path = directory.join(CONFIG_FILE_NAME);
+    fn broken_file_is_backed_up_with_a_timestamp_and_defaults_are_used() {
+        let directory = TempDir::new("broken");
+        let path = directory.path().join(CONFIG_FILE_NAME);
         let store = ConfigStore::new(&path);
         fs::write(&path, "this is not toml").expect("write");
 
         let loaded = store.load();
         assert_eq!(loaded.config, Config::default());
-        assert!(loaded.warning.is_some());
-        assert!(path.with_extension("toml.bak").exists());
+        let warning = loaded.warning.expect("warning");
+        assert!(warning.contains("config.toml.bak."), "{warning}");
         assert!(!path.exists());
+
+        let backups: Vec<_> = fs::read_dir(directory.path())
+            .expect("read directory")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.starts_with("config.toml.bak."))
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert!(warning.contains(&backups[0]), "{warning}");
     }
 
     #[test]
     fn unknown_fields_do_not_break_the_document() {
-        let directory = temp_dir("unknown");
-        let path = directory.join(CONFIG_FILE_NAME);
+        let directory = TempDir::new("unknown");
+        let path = directory.path().join(CONFIG_FILE_NAME);
         let store = ConfigStore::new(&path);
 
         let mut document = Config::default().to_toml_string().expect("serialize");

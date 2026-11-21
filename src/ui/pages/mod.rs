@@ -18,35 +18,16 @@ use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{AnyElement, App, Context, FocusHandle, Rgba, Window, div, px};
 
-/// Ephemeral page UI state: menus, text buffers and focus handles.
+/// Ephemeral page UI state: open menus, hovered rows and current selections.
+///
+/// Text input state lives in gpui-kit's `InputState` (see `ui::controls`), so
+/// this struct no longer carries buffers or one focus handle per field kind.
 pub struct PageState {
     /// Id of the open dropdown menu, if any. `String` so rows can build
     /// dynamic ids like `step-3-kind`.
     pub open_menu: Option<String>,
-    /// Focus handle for the action-set name field.
-    pub focus_set_name: FocusHandle,
-    /// Buffer for the action-set name field.
-    pub set_name: String,
-    /// Select-all-on-first-input flag for the set name field.
-    pub set_name_fresh: bool,
-    /// Focus handle for the macro name field.
-    pub focus_macro_name: FocusHandle,
-    /// Buffer for the macro name field.
-    pub macro_name: String,
-    /// Select-all-on-first-input flag for the macro name field.
-    pub macro_name_fresh: bool,
-    /// Focus handle for the macro text-step field.
-    pub focus_macro_text: FocusHandle,
-    /// Buffer for the macro text-step field.
-    pub macro_text: String,
-    /// Select-all-on-first-input flag for the macro text-step field.
-    pub macro_text_fresh: bool,
-    /// Focus handle for a numeric step field (delay/amount).
-    pub focus_step_value: FocusHandle,
-    /// Buffer for a numeric step field.
-    pub step_value: String,
-    /// Select-all-on-first-input flag for the numeric step field.
-    pub step_value_fresh: bool,
+    /// Control whose key assignment conflicts with another control.
+    pub binding_conflict: Option<crate::core::Control>,
     /// Currently edited action set (by id).
     pub selected_set: Option<String>,
     /// Hovered action-set row in the list; drives the reorder buttons.
@@ -59,12 +40,6 @@ pub struct PageState {
     pub selected_step: Option<usize>,
     /// Hovered sector in the actions wheel preview.
     pub preview_hovered: Option<usize>,
-    /// Focus handle for the launch-path field (actions page).
-    pub focus_path: FocusHandle,
-    /// Buffer for the launch-path field.
-    pub path_buffer: String,
-    /// Select-all-on-first-input flag for the launch-path field.
-    pub path_buffer_fresh: bool,
     /// Focus of the settings root while a key capture is pending.
     pub focus_capture: FocusHandle,
 }
@@ -73,33 +48,22 @@ impl PageState {
     pub(crate) fn new(cx: &App) -> Self {
         Self {
             open_menu: None,
-            focus_set_name: cx.focus_handle(),
-            set_name: String::new(),
-            set_name_fresh: true,
-            focus_macro_name: cx.focus_handle(),
-            macro_name: String::new(),
-            macro_name_fresh: true,
-            focus_macro_text: cx.focus_handle(),
-            macro_text: String::new(),
-            macro_text_fresh: true,
-            focus_step_value: cx.focus_handle(),
-            step_value: String::new(),
-            step_value_fresh: true,
+            binding_conflict: None,
             selected_set: None,
             hovered_set: None,
             hovered_step: None,
             selected_macro: None,
             selected_step: None,
             preview_hovered: None,
-            focus_path: cx.focus_handle(),
-            path_buffer: String::new(),
-            path_buffer_fresh: true,
             focus_capture: cx.focus_handle(),
         }
     }
 }
 
 /// Renders the page selected by the shell.
+///
+/// The tab descriptor table in [`crate::ui::nav`] is the single source of
+/// truth; this dispatch only maps an id to its renderer.
 pub fn render(
     state: &ShellState,
     shared: &Shared,
@@ -114,6 +78,12 @@ pub fn render(
         SettingsTab::Macros => macros::render(state, shared, window, cx).into_any_element(),
         SettingsTab::Actions => actions::render(state, shared, window, cx).into_any_element(),
     }
+}
+
+/// Stable accessibility id for a sidebar tab, independent of the active
+/// language so switching language does not recreate the focus node.
+pub fn tab_element_id(tab: crate::ui::nav::SettingsTab) -> String {
+    format!("settings-tab-{tab:?}")
 }
 
 /// Hairline separator inside a card.
@@ -165,12 +135,22 @@ pub fn platform_notice_text(language: Language, platform: PlatformInfo) -> Optio
     key.map(|key| tr(language, key))
 }
 
-/// Translated label and color for a runtime state.
-pub fn state_label(language: Language, state: RuntimeState) -> (&'static str, Rgba) {
-    match state {
-        RuntimeState::Starting => (tr(language, TextKey::StateStarting), style::WARNING),
-        RuntimeState::Running => (tr(language, TextKey::StateRunning), style::SUCCESS),
-        RuntimeState::Paused => (tr(language, TextKey::StatePaused), style::WARNING),
-        RuntimeState::Stopped => (tr(language, TextKey::StateStopped), style::DANGER),
-    }
+/// Translated label and opaque, AA-contrasting ink for a runtime state.
+pub fn state_label(
+    language: Language,
+    state: RuntimeState,
+    mode: crate::core::ThemeMode,
+) -> (&'static str, Rgba) {
+    let color = match state {
+        RuntimeState::Starting | RuntimeState::Paused => style::WARNING,
+        RuntimeState::Running => style::SUCCESS,
+        RuntimeState::Stopped => style::DANGER,
+    };
+    let label = match state {
+        RuntimeState::Starting => tr(language, TextKey::StateStarting),
+        RuntimeState::Running => tr(language, TextKey::StateRunning),
+        RuntimeState::Paused => tr(language, TextKey::StatePaused),
+        RuntimeState::Stopped => tr(language, TextKey::StateStopped),
+    };
+    (label, style::on_surface(color, mode))
 }
