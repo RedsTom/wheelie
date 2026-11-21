@@ -1,7 +1,12 @@
 //! Actions that can be assigned to a knob gesture.
+//!
+//! The available actions are a closed set: adding a variant is a configuration
+//! version change. Stored actions are validated before use, so an unknown or
+//! malformed value is rejected rather than silently ignored.
 
 use crate::core::i18n::{Language, TextKey, tr};
 use crate::core::key::KeyChord;
+use crate::core::macro_engine::MAX_SCROLL_AMOUNT;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
@@ -244,11 +249,11 @@ impl Action {
                 if (1..=10).contains(steps) {
                     Ok(())
                 } else {
-                    Err(ActionError::InvalidVolumeSteps(*steps))
+                    Err(ActionError::InvalidStepCount(*steps))
                 }
             }
             Self::Scroll { amount, .. } => {
-                if *amount == 0 || amount.unsigned_abs() > 100 {
+                if *amount == 0 || amount.unsigned_abs() > MAX_SCROLL_AMOUNT {
                     Err(ActionError::InvalidScrollAmount(*amount))
                 } else {
                     Ok(())
@@ -266,6 +271,8 @@ impl Action {
             Self::Launch { path } => {
                 if path.as_os_str().is_empty() {
                     Err(ActionError::EmptyLaunchPath)
+                } else if !path.is_absolute() {
+                    Err(ActionError::RelativeLaunchPath(path.clone()))
                 } else {
                     Ok(())
                 }
@@ -288,12 +295,15 @@ impl fmt::Display for Action {
 /// Error returned when an action cannot be validated.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ActionError {
-    /// Volume step count is outside the supported range.
-    #[error("volume steps must be between 1 and 10, got {0}")]
-    InvalidVolumeSteps(u8),
+    /// A step count is outside the supported range, for volume or brightness.
+    #[error("step count must be between 1 and 10, got {0}")]
+    InvalidStepCount(u8),
 
     /// Scroll amount is zero or too large.
-    #[error("scroll amount must be non-zero and at most 100, got {0}")]
+    #[error(
+        "scroll amount must be non-zero and at most {max}, got {0}",
+        max = MAX_SCROLL_AMOUNT
+    )]
     InvalidScrollAmount(i32),
 
     /// The macro name is empty.
@@ -307,6 +317,10 @@ pub enum ActionError {
     /// The launch path is empty.
     #[error("launch path cannot be empty")]
     EmptyLaunchPath,
+
+    /// The launch path is not absolute.
+    #[error("launch path must be absolute: {}", .0.display())]
+    RelativeLaunchPath(PathBuf),
 }
 
 fn with_steps(label: &str, steps: u8) -> String {
@@ -436,7 +450,16 @@ mod tests {
         };
         assert_eq!(
             bad_volume.validate(&macro_names()),
-            Err(ActionError::InvalidVolumeSteps(0))
+            Err(ActionError::InvalidStepCount(0))
+        );
+
+        let bad_brightness = Action::Brightness {
+            direction: VolumeDirection::Up,
+            steps: 11,
+        };
+        assert_eq!(
+            bad_brightness.validate(&macro_names()),
+            Err(ActionError::InvalidStepCount(11))
         );
 
         let bad_scroll = Action::Scroll {
@@ -446,6 +469,25 @@ mod tests {
         assert_eq!(
             bad_scroll.validate(&macro_names()),
             Err(ActionError::InvalidScrollAmount(0))
+        );
+    }
+
+    #[test]
+    fn scroll_limit_matches_the_shared_macro_limit() {
+        let too_large = MAX_SCROLL_AMOUNT as i32 + 1;
+        let action = Action::Scroll {
+            axis: ScrollAxis::Vertical,
+            amount: too_large,
+        };
+        assert_eq!(
+            action.validate(&macro_names()),
+            Err(ActionError::InvalidScrollAmount(too_large))
+        );
+        assert_eq!(
+            ActionError::InvalidScrollAmount(too_large).to_string(),
+            format!(
+                "scroll amount must be non-zero and at most {MAX_SCROLL_AMOUNT}, got {too_large}"
+            )
         );
     }
 
@@ -481,6 +523,26 @@ mod tests {
         assert_eq!(
             empty.validate(&macro_names()),
             Err(ActionError::EmptyLaunchPath)
+        );
+
+        let relative = PathBuf::from("bin/wheelie");
+        let action = Action::Launch {
+            path: relative.clone(),
+        };
+        assert_eq!(
+            action.validate(&macro_names()),
+            Err(ActionError::RelativeLaunchPath(relative))
+        );
+
+        let absolute = if cfg!(windows) {
+            PathBuf::from(r"C:\Program Files\Wheelie\wheelie.exe")
+        } else {
+            PathBuf::from("/usr/bin/true")
+        };
+        assert!(absolute.is_absolute());
+        assert_eq!(
+            Action::Launch { path: absolute }.validate(&macro_names()),
+            Ok(())
         );
     }
 }

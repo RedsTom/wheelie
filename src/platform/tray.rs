@@ -7,6 +7,8 @@
 
 use crate::core::{APP_NAME, Language, TextKey, tr};
 use crate::platform::error::PlatformError;
+use std::any::Any;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use tray_icon::menu::{IsMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
@@ -42,29 +44,37 @@ pub struct TrayService {
 impl TrayService {
     /// Creates the tray icon. The first menu is set by `set_state` on the next
     /// UI tick, once the window and runtime state are known.
+    ///
+    /// This adapter never panics into the caller: the Linux GTK display is
+    /// probed first, and any panic raised inside the native tray library is
+    /// caught and returned as [`PlatformError::Tray`]. On failure the caller
+    /// simply continues without an icon.
     pub fn new(language: Language) -> Result<Self, PlatformError> {
-        let (rgba, width, height) = crate::assets::logo_rgba();
-        let icon = Icon::from_rgba(rgba, width, height)
-            .map_err(|error| PlatformError::Other(error.to_string()))?;
+        probe_gtk()?;
+        guarded("tray creation", || {
+            let (rgba, width, height) = crate::assets::logo_rgba();
+            let icon = Icon::from_rgba(rgba, width, height)
+                .map_err(|error| PlatformError::Tray(error.to_string()))?;
 
-        let state = TrayMenuState {
-            language,
-            window_visible: true,
-            paused: false,
-        };
-        let (menu, entries) = build_menu(state)?;
-        let tray = TrayIconBuilder::new()
-            .with_menu(Box::new(menu))
-            .with_tooltip(APP_NAME)
-            .with_icon(icon)
-            .with_menu_on_left_click(true)
-            .build()
-            .map_err(|error| PlatformError::Other(error.to_string()))?;
+            let state = TrayMenuState {
+                language,
+                window_visible: true,
+                paused: false,
+            };
+            let (menu, entries) = build_menu(state)?;
+            let tray = TrayIconBuilder::new()
+                .with_menu(Box::new(menu))
+                .with_tooltip(APP_NAME)
+                .with_icon(icon)
+                .with_menu_on_left_click(true)
+                .build()
+                .map_err(|error| PlatformError::Tray(error.to_string()))?;
 
-        Ok(Self {
-            tray,
-            entries,
-            state,
+            Ok(Self {
+                tray,
+                entries,
+                state,
+            })
         })
     }
 
@@ -84,23 +94,82 @@ impl TrayService {
             return Ok(());
         }
 
-        let (menu, entries) = build_menu(next)?;
-        self.tray.set_menu(Some(Box::new(menu)));
-        self.entries = entries;
-        self.state = next;
-        Ok(())
+        guarded("tray menu update", || {
+            let (menu, entries) = build_menu(next)?;
+            self.tray.set_menu(Some(Box::new(menu)));
+            self.entries = entries;
+            self.state = next;
+            Ok(())
+        })
     }
 
-    /// Drains pending menu selections.
+    /// Drains pending menu selections without ever panicking into the UI loop.
     pub fn poll(&self) -> Vec<TrayCommand> {
-        let mut commands = Vec::new();
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if let Some((_, command)) = self.entries.iter().find(|(id, _)| id == &event.id) {
-                commands.push(*command);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let mut commands = Vec::new();
+            while let Ok(event) = MenuEvent::receiver().try_recv() {
+                if let Some((_, command)) = self.entries.iter().find(|(id, _)| id == &event.id) {
+                    commands.push(*command);
+                }
+            }
+            commands
+        }));
+        match result {
+            Ok(commands) => commands,
+            Err(payload) => {
+                tracing::warn!(message = %panic_text(&payload), "tray polling panicked");
+                Vec::new()
             }
         }
-        commands
     }
+}
+
+/// Converts any panic payload into a message without a second unwind.
+fn panic_text(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(inner) = payload.downcast_ref::<Box<dyn Any + Send>>() {
+        // Some adapters re-box a payload while crossing a FFI boundary.
+        panic_text(inner.as_ref())
+    } else {
+        "unknown panic".to_owned()
+    }
+}
+
+/// Turns a panic raised by the native adapter into a normal adapter error.
+fn guarded<T>(
+    operation: &'static str,
+    action: impl FnOnce() -> Result<T, PlatformError>,
+) -> Result<T, PlatformError> {
+    match catch_unwind(AssertUnwindSafe(action)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = panic_text(&payload);
+            tracing::warn!(operation, %message, "tray adapter panicked");
+            Err(PlatformError::Tray(format!(
+                "{operation} panicked: {message}"
+            )))
+        }
+    }
+}
+
+/// Cheap probe for the X display the GTK-based tray needs on Unix.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn probe_gtk() -> Result<(), PlatformError> {
+    if std::env::var_os("DISPLAY").is_none() {
+        return Err(PlatformError::Tray(
+            "the tray icon needs an X11 display".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// No GTK probe is needed where the tray is native.
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn probe_gtk() -> Result<(), PlatformError> {
+    Ok(())
 }
 
 /// The window and pause pairs are mutually exclusive; quitting is always
@@ -152,7 +221,7 @@ fn build_menu(state: TrayMenuState) -> Result<(Menu, Vec<(MenuId, TrayCommand)>)
     let menu = Menu::new();
     let refs: Vec<&dyn IsMenuItem> = items.iter().map(|item| item.as_ref()).collect();
     menu.append_items(&refs)
-        .map_err(|error| PlatformError::Other(error.to_string()))?;
+        .map_err(|error| PlatformError::Tray(error.to_string()))?;
     Ok((menu, entries))
 }
 
@@ -182,5 +251,19 @@ mod tests {
             tray_commands(false, true),
             vec![TrayCommand::Show, TrayCommand::Resume, TrayCommand::Quit]
         );
+    }
+
+    #[test]
+    fn panics_become_adapter_errors() {
+        let error = guarded("test", || -> Result<(), PlatformError> { panic!("boom") })
+            .expect_err("panic must be caught");
+        assert!(error.to_string().contains("boom"));
+    }
+
+    #[test]
+    fn panic_payloads_are_readable() {
+        let text = String::from("owned panic");
+        assert_eq!(panic_text(&"static panic"), "static panic");
+        assert_eq!(panic_text(&text), "owned panic");
     }
 }

@@ -30,7 +30,7 @@ use wheelie::core::{KeyChord, KeyCode, Language};
 use wheelie::platform::{GlobalHotkeyService, HotkeySource, TrayCommand, TrayService};
 
 // ---------------------------------------------------------------------------
-// Assets: Rubik fonts + one Phosphor SVG to prove the AssetSource pipeline.
+// Assets: Rubik fonts + one Lucide-style SVG to prove the AssetSource pipeline.
 // ---------------------------------------------------------------------------
 
 struct SpikeAssets;

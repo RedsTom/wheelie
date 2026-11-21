@@ -2,7 +2,7 @@
 # Assembles Wheelie.app, a .dmg and a portable .zip from a universal binary.
 #
 # Required environment:
-#   VERSION   release version, e.g. 0.1.3-beta.1
+#   VERSION   release version, e.g. 0.4.1-beta.1
 #   BIN       path to the universal `wheelie` binary
 #   OUT_DIR   output directory for the artifacts
 set -euo pipefail

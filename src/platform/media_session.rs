@@ -109,6 +109,7 @@ impl Reader {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::*;
+    use crate::platform::error::PlatformError;
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession,
         GlobalSystemMediaTransportControlsSessionManager,
@@ -117,12 +118,43 @@ mod imp {
     use windows::Storage::Streams::{
         DataReader, IRandomAccessStream, IRandomAccessStreamReference,
     };
-    use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize};
+    use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
+    use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
     use windows::core::Interface;
 
     /// Covers are album art, not documents; anything larger is a runaway
     /// stream the popup does not need.
     const MAX_COVER_BYTES: u64 = 4 * 1024 * 1024;
+
+    /// Balances the single WinRT initialisation made for one read.
+    struct WinRtScope;
+
+    impl WinRtScope {
+        fn enter() -> windows::core::Result<Self> {
+            // SAFETY: WinRT is initialised once here in the multi-threaded
+            // apartment; every successful call (including S_FALSE) is balanced
+            // in `Drop`. A mode mismatch is reported instead of swallowed.
+            let result = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+            if let Err(error) = result {
+                if error.code() == RPC_E_CHANGED_MODE {
+                    tracing::debug!(%error, "thread already uses another WinRT apartment");
+                }
+                return Err(error);
+            }
+            Ok(Self)
+        }
+    }
+
+    impl Drop for WinRtScope {
+        fn drop(&mut self) {
+            // SAFETY: paired with the successful `RoInitialize` above.
+            unsafe { RoUninitialize() };
+        }
+    }
+
+    fn com(error: windows::core::Error) -> PlatformError {
+        PlatformError::Com(Box::new(error))
+    }
 
     pub struct Reader {
         manager: Option<GlobalSystemMediaTransportControlsSessionManager>,
@@ -143,27 +175,42 @@ mod imp {
             }
         }
 
-        fn inner_read(&mut self) -> windows::core::Result<Reading> {
-            // WinRT calls need per-thread initialisation and the action worker
-            // thread starts without it. Re-initialising with the same model is
-            // Ok; a different apartment only means the thread is already set up.
-            let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+        fn inner_read(&mut self) -> Result<Reading, PlatformError> {
+            let _winrt = WinRtScope::enter().map_err(com)?;
 
             if self.manager.is_none() {
-                self.manager =
-                    Some(GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.join()?);
+                self.manager = Some(
+                    GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+                        .map_err(com)?
+                        .join()
+                        .map_err(com)?,
+                );
             }
-            let manager = self.manager.as_ref().expect("activated above");
+            let Some(manager) = self.manager.as_ref() else {
+                return Err(PlatformError::Other(
+                    "the media session manager was not activated".to_owned(),
+                ));
+            };
 
-            // A null or failing current session means nothing is playing.
-            let Ok(session) = manager.GetCurrentSession() else {
-                return Ok(Reading::NoSession);
+            // A failing session lookup means nothing owns the session; a
+            // readable session with no metadata is a different case and is
+            // reported as unavailable below.
+            let session = match manager.GetCurrentSession() {
+                Ok(session) => session,
+                Err(error) => {
+                    tracing::debug!(%error, "no current media session");
+                    return Ok(Reading::NoSession);
+                }
             };
             // `TryGetMediaPropertiesAsync` is the API windows-rs binds today
             // (Windows 11+). Failing it is not "no track": stay silent rather
             // than announce a stop that did not happen.
-            let Ok(properties) = session.TryGetMediaPropertiesAsync()?.join() else {
-                return Ok(Reading::Unavailable);
+            let properties = match session.TryGetMediaPropertiesAsync().map_err(com)?.join() {
+                Ok(properties) => properties,
+                Err(error) => {
+                    tracing::debug!(%error, "current session publishes no readable metadata");
+                    return Ok(Reading::Unavailable);
+                }
             };
             let playing = matches!(
                 session
@@ -178,8 +225,8 @@ mod imp {
                 .and_then(cover_from_reference);
             let (position_ms, duration_ms) = timeline_position(&session);
             Ok(Reading::Track(NowPlaying {
-                title: properties.Title()?.to_string(),
-                artist: properties.Artist()?.to_string(),
+                title: properties.Title().map_err(com)?.to_string(),
+                artist: properties.Artist().map_err(com)?.to_string(),
                 cover,
                 playing,
                 position_ms,
@@ -203,14 +250,23 @@ mod imp {
         ) else {
             return (0, 0);
         };
-        let (start, end, position) = (millis(start), millis(end), millis(position));
+        timeline_bounds(start.Duration, end.Duration, position.Duration)
+    }
+
+    /// Pure timeline arithmetic, relative to the reported start time.
+    fn timeline_bounds(start: i64, end: i64, position: i64) -> (u64, u64) {
+        let (start, end, position) = (
+            millis_ticks(start),
+            millis_ticks(end),
+            millis_ticks(position),
+        );
         let duration = end.saturating_sub(start);
         (position.saturating_sub(start).min(duration), duration)
     }
 
-    /// WinRT `TimeSpan` (100 ns ticks) to whole milliseconds.
-    fn millis(value: windows::Foundation::TimeSpan) -> u64 {
-        u64::try_from(value.Duration.max(0) / 10_000).unwrap_or(u64::MAX)
+    /// WinRT timestamps are 100 ns ticks; convert them to whole milliseconds.
+    fn millis_ticks(ticks: i64) -> u64 {
+        u64::try_from(ticks.max(0) / 10_000).unwrap_or(u64::MAX)
     }
 
     /// Reads and sniffs the cover stream; `None` on any failure, which only
@@ -228,6 +284,26 @@ mod imp {
         reader.ReadBytes(&mut bytes).ok()?;
         let format = detect_format(&bytes)?;
         Some(Cover { bytes, format })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn millis_converts_winrt_ticks() {
+            assert_eq!(millis_ticks(10_000), 1);
+            assert_eq!(millis_ticks(1_234_567), 123);
+            assert_eq!(millis_ticks(-10_000), 0);
+        }
+
+        #[test]
+        fn timeline_is_relative_to_start_and_clamped() {
+            // 10 000 ticks are one millisecond.
+            assert_eq!(timeline_bounds(0, 100_000, 50_000), (5, 10));
+            assert_eq!(timeline_bounds(10_000, 110_000, 5_000), (0, 10));
+            assert_eq!(timeline_bounds(10_000, 110_000, 200_000), (10, 10));
+        }
     }
 }
 

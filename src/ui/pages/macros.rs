@@ -2,7 +2,10 @@
 
 use crate::app::RuntimeHandle;
 use crate::core::action::{MouseButton, ScrollAxis};
-use crate::core::{Config, KeyChord, KeyCode, Language, MacroDefinition, MacroStep, TextKey, tr};
+use crate::core::macro_engine::{MAX_DELAY_MS, MAX_SCROLL_AMOUNT};
+use crate::core::{
+    Action, Config, Control, KeyChord, KeyCode, Language, MacroDefinition, MacroStep, TextKey, tr,
+};
 use crate::ui::capture::{self, CaptureTarget};
 use crate::ui::controls;
 use crate::ui::shell::{SettingsView, Shared, ShellState};
@@ -10,6 +13,7 @@ use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{AnyElement, App, Context, Window, div, px};
 use gpui_kit::component::{WindowExt, button::ButtonVariant};
+use std::collections::HashSet;
 
 pub(crate) fn render(
     state: &ShellState,
@@ -189,6 +193,7 @@ fn editor_column(
                 tr(language, TextKey::EmptyMacrosBody),
                 tr(language, TextKey::NewMacroButton),
                 style::ACCENT,
+                state.preferences.theme_mode,
             ),
         )
         .into_any_element();
@@ -267,8 +272,13 @@ fn editor(
     delete: AnyElement,
     cx: &mut App,
 ) -> impl IntoElement + use<> {
+    let rename_runtime = state.runtime.clone();
+    let rename_shared = shared.clone();
+    let renamed = definition.name.clone();
     let name_field = controls::field_input(
-        "macro-name",
+        controls::FieldRef::new("macro-name", move |value| {
+            rename_macro(&rename_runtime, &rename_shared, &renamed, value);
+        }),
         tr(language, TextKey::MacroNameLabel),
         definition.name.as_str(),
         None,
@@ -500,6 +510,8 @@ fn step_row(
             let key_shared = shared.clone();
             let confirm_shared = shared.clone();
             let cancel_shared = shared.clone();
+            let outside_target = target.clone();
+            let outside_shared = shared.clone();
             let mut key_row =
                 div()
                     .flex()
@@ -522,10 +534,17 @@ fn step_row(
                     move |_, _, _| capture::cancel(&cancel_shared),
                 ));
             }
+            if capturing {
+                key_row = key_row.on_mouse_down_out(move |_, _, _| {
+                    capture::abandon_if_target(&outside_shared, &outside_target);
+                });
+            }
             editors.push(key_row.into_any_element());
         }
         MacroStep::Text { text } => {
-            editors.push(text_editor(window, language, index, text, cx));
+            editors.push(text_editor(
+                state, window, language, macro_name, index, text, cx,
+            ));
         }
         MacroStep::Delay { ms } => {
             editors.push(
@@ -545,7 +564,7 @@ fn step_row(
                         macro_name,
                         index,
                         *ms as i64,
-                        0..=60_000,
+                        0..=MAX_DELAY_MS as i64,
                         cx,
                     ))
                     .into_any_element(),
@@ -635,7 +654,7 @@ fn step_row(
                 macro_name,
                 index,
                 *amount as i64,
-                -100..=100,
+                -i64::from(MAX_SCROLL_AMOUNT)..=i64::from(MAX_SCROLL_AMOUNT),
                 cx,
             ));
         }
@@ -937,14 +956,32 @@ fn number_editor(
     cx: &mut App,
 ) -> AnyElement {
     // Each step owns an input keyed by its row, so caret and commit need no
-    // shared-buffer bookkeeping anymore.
+    // shared-buffer bookkeeping anymore. Typed values go through a FieldRef so
+    // the writer always targets the macro that was rendered.
     let lo = *range.start();
     let hi = *range.end();
     let delta_runtime = state.runtime.clone();
+    let field_runtime = state.runtime.clone();
     let rendered = macro_name.to_owned();
+    let field_name = macro_name.to_owned();
+
+    let field = controls::FieldRef::new(format!("step-{row}-value"), move |text| {
+        let Ok(parsed) = text.trim().parse::<i64>() else {
+            return;
+        };
+        let next = parsed.clamp(lo, hi);
+        with_macro(&field_runtime, &field_name, |m| {
+            if let Some(step) = m.steps.get_mut(row) {
+                set_numeric(step, next);
+                true
+            } else {
+                false
+            }
+        });
+    });
 
     controls::number_field(
-        &format!("step-{row}-value"),
+        field,
         value.to_string(),
         move |delta, _, _| {
             let next = (value + delta).clamp(lo, hi);
@@ -963,15 +1000,32 @@ fn number_editor(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn text_editor(
+    state: &ShellState,
     window: &mut Window,
     language: Language,
+    macro_name: &str,
     row: usize,
     text: &str,
     cx: &mut App,
 ) -> AnyElement {
+    let runtime = state.runtime.clone();
+    let name = macro_name.to_owned();
     controls::field_input(
-        &format!("step-{row}-text"),
+        controls::FieldRef::new(format!("step-{row}-text"), move |value| {
+            if value.is_empty() {
+                return;
+            }
+            with_macro(&runtime, &name, |m| {
+                if let Some(MacroStep::Text { text }) = m.steps.get_mut(row) {
+                    *text = value.to_owned();
+                    true
+                } else {
+                    false
+                }
+            });
+        }),
         tr(language, TextKey::TextLabel),
         text,
         None,
@@ -988,9 +1042,6 @@ fn text_editor(
 fn reset_edit_state(page: &mut super::PageState) {
     page.selected_step = None;
     page.open_menu = None;
-    page.macro_name_fresh = true;
-    page.macro_text_fresh = true;
-    page.step_value_fresh = true;
 }
 
 /// Applies `mutate` to the named macro and commits; returns whether the
@@ -1033,29 +1084,77 @@ fn commit_macros(runtime: &RuntimeHandle, macros: Vec<MacroDefinition>) -> bool 
     }
 }
 
-/// Renames `old` to `new`, tracking the selection on success.
-pub(crate) fn rename_macro(runtime: &RuntimeHandle, shared: &Shared, old: &str, new: &str) {
-    if old == new {
-        return;
+/// Renames `old` to `new`, rewriting actions that referenced it and tracking
+/// the selection on success. Invalid names and duplicate names are rejected
+/// before anything is persisted.
+pub(crate) fn rename_macro(runtime: &RuntimeHandle, shared: &Shared, old: &str, new: &str) -> bool {
+    let new = new.trim();
+    if new.is_empty() || old == new {
+        return false;
     }
-    let mut macros = runtime.config().macros;
-    let Some(definition) = macros.iter_mut().find(|m| m.name == old) else {
-        return;
+    let config = runtime.config();
+    let mut macros = config.macros.clone();
+    let Some(index) = macros.iter().position(|item| item.name == old) else {
+        return false;
     };
-    definition.name = new.to_owned();
-    match runtime.update_config(move |config| config.macros = macros) {
-        Ok(()) => {
-            shared.borrow_mut().page.selected_macro = Some(new.to_owned());
+    if macros
+        .iter()
+        .enumerate()
+        .any(|(other, item)| other != index && item.name == new)
+    {
+        return false;
+    }
+
+    macros[index].name = new.to_owned();
+    if let Err(error) = macros[index].validate() {
+        runtime.report_error(error.to_string());
+        return false;
+    }
+
+    let names: HashSet<String> = macros.iter().map(|item| item.name.clone()).collect();
+    let mut sets = config.action_sets.clone();
+    for set in &mut sets {
+        for control in [Control::Left, Control::Right, Control::Press] {
+            let action = set.actions.for_control_mut(control);
+            if let Action::Macro { name } = action
+                && name.as_str() == old
+            {
+                *name = new.to_owned();
+            }
+            if let Err(error) = action.validate(&names) {
+                runtime.report_error(error.to_string());
+                return false;
+            }
         }
-        Err(error) => runtime.report_error(error.to_string()),
+    }
+
+    match runtime.update_config(move |config| {
+        config.macros = macros;
+        config.action_sets = sets;
+    }) {
+        Ok(()) => {
+            let mut shell = shared.borrow_mut();
+            if shell.page.selected_macro.as_deref() == Some(old) {
+                shell.page.selected_macro = Some(new.to_owned());
+            }
+            true
+        }
+        Err(error) => {
+            runtime.report_error(error.to_string());
+            false
+        }
     }
 }
 
 /// Writes a numeric step value, clamped to the old DragValue ranges.
 pub(crate) fn set_numeric(step: &mut MacroStep, value: i64) {
     match step {
-        MacroStep::Delay { ms } => *ms = value.clamp(0, 60_000) as u64,
-        MacroStep::Scroll { amount, .. } => *amount = value.clamp(-100, 100) as i32,
+        MacroStep::Delay { ms } => *ms = value.clamp(0, MAX_DELAY_MS as i64) as u64,
+        MacroStep::Scroll { amount, .. } => {
+            let limit = i64::from(MAX_SCROLL_AMOUNT);
+            let clamped = if value == 0 { 1 } else { value };
+            *amount = clamped.clamp(-limit, limit) as i32;
+        }
         _ => {}
     }
 }
@@ -1225,12 +1324,20 @@ mod tests {
 
     #[test]
     fn default_steps_are_valid_and_map_back() {
+        let chord = KeyChord::new(KeyCode::KeyA);
         for kind in StepKind::ALL {
             let step = kind.default_step();
             assert_eq!(StepKind::of(&step), kind);
+            // A lone Press or Release is intentionally invalid: the editor
+            // must offer the matching step before the macro can be replayed.
+            let steps = match kind {
+                StepKind::Press => vec![step, MacroStep::Release { chord }],
+                StepKind::Release => vec![MacroStep::Press { chord }, step],
+                _ => vec![step],
+            };
             let definition = MacroDefinition {
                 name: "macro".to_owned(),
-                steps: vec![step],
+                steps,
             };
             assert_eq!(
                 definition.validate(),

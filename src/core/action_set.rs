@@ -284,11 +284,15 @@ pub fn default_sets(language: Language, brightness_supported: bool) -> Vec<Actio
 /// True when `set` is the untouched brightness set created by default.
 ///
 /// Used to drop that set on platforms whose input backend cannot change the
-/// brightness, without touching a set the user customized.
-pub fn is_default_brightness_set(set: &ActionSet) -> bool {
+/// brightness, without touching a set the user customized. The name and the
+/// icon are part of the comparison: renaming or re-iconing a set is a
+/// customization and must keep it alive even when the actions still match.
+pub fn is_default_brightness_set(set: &ActionSet, language: Language) -> bool {
     use crate::core::action::{Action, VolumeDirection};
 
     set.id == BRIGHTNESS_SET_ID
+        && set.name == tr(language, TextKey::SetBrightness)
+        && set.icon == SetIcon::Brightness
         && set.actions.left
             == (Action::Brightness {
                 direction: VolumeDirection::Down,
@@ -305,11 +309,14 @@ pub fn is_default_brightness_set(set: &ActionSet) -> bool {
 /// True when `set` is the volume set shipped before press muted by default.
 ///
 /// Used to add the mute action to an untouched set while preserving any set the
-/// user customized.
-pub fn is_legacy_default_volume_set(set: &ActionSet) -> bool {
+/// user customized. A renamed or re-iconed set is customized even when its
+/// actions still match, so its press action is left alone.
+pub fn is_legacy_default_volume_set(set: &ActionSet, language: Language) -> bool {
     use crate::core::action::{Action, VolumeDirection};
 
     set.id == VOLUME_SET_ID
+        && set.name == tr(language, TextKey::SetVolume)
+        && set.icon == SetIcon::Volume
         && set.actions.left
             == (Action::Volume {
                 direction: VolumeDirection::Down,
@@ -407,7 +414,7 @@ mod tests {
 
         let volume = &default_sets(Language::En, true)[0];
         assert_eq!(volume.actions.press, Action::Mute);
-        assert!(!is_legacy_default_volume_set(volume));
+        assert!(!is_legacy_default_volume_set(volume, Language::En));
     }
 
     #[test]
@@ -441,21 +448,40 @@ mod tests {
     fn legacy_default_volume_set_is_detected_before_customization() {
         use crate::core::action::Action;
 
-        let mut legacy = media_set(Language::En);
-        legacy.id = VOLUME_SET_ID.to_owned();
-        legacy.actions.left = Action::Volume {
-            direction: crate::core::action::VolumeDirection::Down,
-            steps: 1,
-        };
-        legacy.actions.right = Action::Volume {
-            direction: crate::core::action::VolumeDirection::Up,
-            steps: 1,
-        };
+        // A pre-v5 document has the default volume actions but no mute on press.
+        let mut legacy = default_sets(Language::En, true)[0].clone();
         legacy.actions.press = Action::None;
-        assert!(is_legacy_default_volume_set(&legacy));
+        assert!(is_legacy_default_volume_set(&legacy, Language::En));
 
         legacy.actions.left = Action::Mute;
-        assert!(!is_legacy_default_volume_set(&legacy));
+        assert!(!is_legacy_default_volume_set(&legacy, Language::En));
+    }
+
+    #[test]
+    fn renaming_or_re_iconing_a_default_set_marks_it_as_customized() {
+        use crate::core::action::Action;
+
+        let mut brightness = default_sets(Language::En, true)[1].clone();
+        assert!(is_default_brightness_set(&brightness, Language::En));
+
+        brightness.name = "My brightness".to_owned();
+        assert!(!is_default_brightness_set(&brightness, Language::En));
+
+        let mut brightness = default_sets(Language::En, true)[1].clone();
+        brightness.icon = SetIcon::Star;
+        assert!(!is_default_brightness_set(&brightness, Language::En));
+
+        let mut volume = default_sets(Language::En, true)[0].clone();
+        volume.actions.press = Action::None;
+        assert!(is_legacy_default_volume_set(&volume, Language::En));
+
+        volume.name = "My volume".to_owned();
+        assert!(!is_legacy_default_volume_set(&volume, Language::En));
+
+        let mut volume = default_sets(Language::En, true)[0].clone();
+        volume.actions.press = Action::None;
+        volume.icon = SetIcon::Star;
+        assert!(!is_legacy_default_volume_set(&volume, Language::En));
     }
 
     #[test]

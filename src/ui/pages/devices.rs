@@ -8,11 +8,6 @@ use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
 use gpui::{Context, Window, div, px};
 
-/// Stored in the page's open-menu slot while a key pick that would duplicate
-/// another binding has been rejected; renders the distinct-keys warning until
-/// the next menu interaction or a successful edit.
-const CONFLICT: &str = "bindings-conflict";
-
 pub(crate) fn render(
     state: &ShellState,
     shared: &Shared,
@@ -56,7 +51,7 @@ pub(crate) fn bindings_card(
     language: Language,
     bindings: Bindings,
 ) -> impl IntoElement {
-    let conflict = state.page.open_menu.as_deref() == Some(CONFLICT);
+    let conflict = state.page.binding_conflict.is_some();
     let invalid = bindings.validate().is_err();
 
     controls::card(
@@ -143,6 +138,8 @@ fn binding_row(
     let capture_shared = shared.clone();
     let confirm_shared = shared.clone();
     let cancel_shared = shared.clone();
+    let outside_target = target.clone();
+    let outside_shared = shared.clone();
 
     div()
         .id(ids.row)
@@ -175,6 +172,11 @@ fn binding_row(
                 capture::start(window, cx, &capture_shared, target.clone());
             },
         ))
+        .when(capturing, |row| {
+            row.on_mouse_down_out(move |_, _, _| {
+                capture::abandon_if_target(&outside_shared, &outside_target);
+            })
+        })
 }
 
 /// Stores a key captured in the settings window as the chord of `control`.
@@ -203,15 +205,17 @@ fn edit_chord(
     let bindings = with_chord(config.profiles[index].bindings, control, chord);
 
     if bindings.validate().is_err() {
-        shell.page.open_menu = Some(CONFLICT.to_owned());
+        shell.page.binding_conflict = Some(control);
+        shell.page.open_menu = None;
         return;
     }
 
-    match runtime.update_config(|config| config.profiles[index].bindings = bindings) {
-        Ok(()) => shell.hotkeys_dirty = true,
-        Err(error) => runtime.report_error(error.to_string()),
+    if let Err(error) = runtime.update_config(|config| config.profiles[index].bindings = bindings) {
+        runtime.report_error(error.to_string());
+    } else {
+        shell.page.binding_conflict = None;
     }
-    if close_menu || shell.page.open_menu.as_deref() == Some(CONFLICT) {
+    if close_menu {
         shell.page.open_menu = None;
     }
 }

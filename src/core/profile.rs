@@ -1,4 +1,10 @@
 //! A profile binds the three knob controls to key chords.
+//!
+//! Two devices emitting the same chords are indistinguishable in v1. A profile
+//! may carry a `device_id` so a future version can tell devices apart, but the
+//! uniqueness rule remains conservative: two profiles whose device identifiers
+//! overlap must not share a chord, whatever the control. An absent identifier
+//! means "any device", so it overlaps with every other profile.
 
 use crate::core::action::Action;
 use crate::core::gesture::{Bindings, BindingsError, Control};
@@ -57,6 +63,9 @@ pub struct Profile {
     /// Whether the profile may be active.
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
+    /// Optional hardware identifier, reserved for future versions.
+    #[serde(default)]
+    pub device_id: Option<String>,
     /// Key chords for the three controls.
     pub bindings: Bindings,
 }
@@ -72,7 +81,20 @@ impl Profile {
             id: id.into(),
             name: name.into(),
             enabled: true,
+            device_id: None,
             bindings,
+        }
+    }
+
+    /// True when this profile can drive the given device identifier.
+    ///
+    /// A profile without an identifier matches every device; otherwise only an
+    /// exact match is accepted.
+    pub fn matches_device(&self, device_id: Option<&str>) -> bool {
+        match (&self.device_id, device_id) {
+            (None, _) => true,
+            (Some(expected), Some(actual)) => expected == actual,
+            (Some(_), None) => false,
         }
     }
 
@@ -114,7 +136,9 @@ pub enum ProfileError {
 mod tests {
     use super::*;
     use crate::core::action::{MediaCommand, VolumeDirection};
-    use crate::core::gesture::GestureConfig;
+    use crate::core::gesture::{
+        DEFAULT_DOUBLE_CLICK_MS, DEFAULT_ROTATION_DEBOUNCE_MS, GestureConfig,
+    };
     use crate::core::key::KeyCode;
 
     fn bindings() -> Bindings {
@@ -194,8 +218,43 @@ mod tests {
     }
 
     #[test]
-    fn gesture_config_is_usable_with_profiles() {
+    fn gesture_config_uses_the_shared_defaults() {
         // Guards the shared defaults used by the runtime.
-        assert_eq!(GestureConfig::default().double_click_ms, 350);
+        assert_eq!(
+            GestureConfig::default().double_click_ms,
+            DEFAULT_DOUBLE_CLICK_MS
+        );
+        assert_eq!(
+            GestureConfig::default().rotation_debounce_ms,
+            DEFAULT_ROTATION_DEBOUNCE_MS
+        );
+    }
+
+    #[test]
+    fn device_identifier_defaults_to_any_device() {
+        let profile = Profile::new("default", "Default", bindings());
+        assert_eq!(profile.device_id, None);
+        assert!(profile.matches_device(None));
+        assert!(profile.matches_device(Some("keyboard-1")));
+
+        let serial = Profile {
+            device_id: Some("keyboard-1".to_owned()),
+            ..Profile::new("serial", "Serial", bindings())
+        };
+        assert!(serial.matches_device(Some("keyboard-1")));
+        assert!(!serial.matches_device(Some("keyboard-2")));
+        assert!(!serial.matches_device(None));
+    }
+
+    #[test]
+    fn device_identifier_is_absent_from_older_documents() {
+        #[derive(serde::Deserialize)]
+        struct LegacyProfile {
+            #[serde(default)]
+            device_id: Option<String>,
+        }
+
+        let row: LegacyProfile = toml::from_str("name = \"Default\"").expect("deserialize");
+        assert_eq!(row.device_id, None);
     }
 }

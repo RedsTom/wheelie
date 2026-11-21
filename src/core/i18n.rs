@@ -102,6 +102,7 @@ pub enum TextKey {
     ComingSoonBadge,
     ActiveProfileLabel,
     NoProfileLabel,
+    ProfileDefaultName,
     ControlLeft,
     ControlRight,
     ControlPress,
@@ -311,6 +312,7 @@ impl TextKey {
         Self::ComingSoonBadge,
         Self::ActiveProfileLabel,
         Self::NoProfileLabel,
+        Self::ProfileDefaultName,
         Self::ControlLeft,
         Self::ControlRight,
         Self::ControlPress,
@@ -488,9 +490,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         fr: "La roue au bout du knob",
         en: "The wheel at your fingertips",
     },
+    // `Workspace` and `TabSettings` deliberately share the same label: the
+    // former names the settings window, the latter its tab in the navigation.
     Translation {
         key: TextKey::Workspace,
-        fr: "Paramètres",
+        fr: "Réglages",
         en: "Settings",
     },
     Translation {
@@ -646,7 +650,7 @@ pub const TRANSLATIONS: &[Translation] = &[
     Translation {
         key: TextKey::StepAssignBody,
         fr: "Volume, défilement, macro, raccourci, souris ou lancement d'application.",
-        en: "Volume, scroll, macro, shortcut, mouse or app launch.",
+        en: "Volume, scroll, macro, shortcut, mouse or application launch.",
     },
     Translation {
         key: TextKey::StepOpenTitle,
@@ -702,6 +706,11 @@ pub const TRANSLATIONS: &[Translation] = &[
         key: TextKey::NoProfileLabel,
         fr: "Aucun profil sélectionné",
         en: "No profile selected",
+    },
+    Translation {
+        key: TextKey::ProfileDefaultName,
+        fr: "Par défaut",
+        en: "Default",
     },
     Translation {
         key: TextKey::ControlLeft,
@@ -786,7 +795,7 @@ pub const TRANSLATIONS: &[Translation] = &[
     Translation {
         key: TextKey::ActionLaunch,
         fr: "Lancer une application",
-        en: "Launch app",
+        en: "Launch application",
     },
     Translation {
         key: TextKey::ActionMediaPlayPause,
@@ -996,7 +1005,7 @@ pub const TRANSLATIONS: &[Translation] = &[
     Translation {
         key: TextKey::ActionKindLaunch,
         fr: "Lancer une application",
-        en: "Launch app",
+        en: "Launch application",
     },
     Translation {
         key: TextKey::ActionDirection,
@@ -1576,6 +1585,44 @@ mod tests {
         }
     }
 
+    /// True when `term` occurs as a whole word in `text`.
+    ///
+    /// Matching on word boundaries keeps ordinary prose such as "Configurez"
+    /// and "Configure a knob" from colliding with the layer name `config`.
+    fn contains_word(text: &str, term: &str) -> bool {
+        let text = text.to_ascii_lowercase();
+        let term = term.to_ascii_lowercase();
+        let mut offset = 0;
+
+        while offset < text.len() {
+            let Some(index) = text[offset..].find(term.as_str()) else {
+                break;
+            };
+            let start = offset + index;
+            let end = start + term.len();
+            let before = text[..start].chars().next_back();
+            let after = text[end..].chars().next();
+            let left_boundary = before.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            let right_boundary = after.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            if left_boundary && right_boundary {
+                return true;
+            }
+            offset = start + text[start..].chars().next().map_or(1, char::len_utf8);
+        }
+        false
+    }
+
+    #[test]
+    fn word_matching_ignores_prefixes_and_suffixes() {
+        assert!(contains_word("Use the app", "app"));
+        assert!(contains_word("Configuration: config", "config"));
+        assert!(!contains_word("Configurez un knob", "config"));
+        assert!(!contains_word("Configure a knob", "config"));
+        assert!(!contains_word("configuration", "config"));
+        assert!(!contains_word("Application", "app"));
+        assert!(!contains_word("interface", "ui"));
+    }
+
     #[test]
     fn translations_do_not_expose_developer_vocabulary() {
         let forbidden = [
@@ -1591,11 +1638,16 @@ mod tests {
             "hotkeys",
             "core",
             "platform",
+            "app",
+            "ui",
+            "config",
+            "capture",
             "architecture",
             "workspace",
             "milestone",
             "jalon",
             "domaine",
+            "test",
             "tests",
             "simulation",
             "roadmap",
@@ -1605,16 +1657,12 @@ mod tests {
         for row in TRANSLATIONS {
             for term in forbidden {
                 assert!(
-                    !row.fr
-                        .to_ascii_lowercase()
-                        .contains(&term.to_ascii_lowercase()),
+                    !contains_word(row.fr, term),
                     "developer term {term:?} leaked into French UI string: {}",
                     row.fr
                 );
                 assert!(
-                    !row.en
-                        .to_ascii_lowercase()
-                        .contains(&term.to_ascii_lowercase()),
+                    !contains_word(row.en, term),
                     "developer term {term:?} leaked into English UI string: {}",
                     row.en
                 );

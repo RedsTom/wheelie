@@ -8,6 +8,9 @@ authors = ["RedsTom"]
 repository = "https://github.com/RedsTom/wheelie"
 description = "Cross-platform knob utility with a Windows Wheel-inspired radial UI"
 
+[features]
+test-doubles = []
+
 [dependencies]
 anyhow = "1"
 auto-launch = "0.6"
@@ -16,8 +19,8 @@ crossbeam-channel = "0.5"
 directories = "6"
 enigo = "0.6.1"
 global-hotkey = "0.10"
-gpui-icons = "0.7.0"
-gpui-kit = "0.10"
+gpui-icons = "=0.7.0"
+gpui-kit = "=0.10.0"
 gpui-pre = "=0.3.12"
 gpui-pre-platform = "=0.3.12"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -49,5 +52,3 @@ windows = { version = "0.62", features = [
 
 [build-dependencies]
 embed-resource = "3"
-
-[dev-dependencies]

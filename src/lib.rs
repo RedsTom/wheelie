@@ -9,8 +9,8 @@
 //! ui        gpui shell, settings pages and the radial wheel
 //! ```
 //!
-//! Dependency direction is strictly `core → platform → app → ui`. The binary in
-//! `main.rs` only composes these modules.
+//! Dependencies point inward: ui → app → platform → core; core depends on no
+//! other layer. The binary in `main.rs` only composes these modules.
 
 pub mod app;
 pub mod assets;

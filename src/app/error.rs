@@ -19,7 +19,15 @@ pub enum AppError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// The runtime channel is closed.
+    /// The runtime channel is closed or the action worker is unhealthy.
     #[error("the Wheelie runtime is stopped")]
     RuntimeStopped,
+
+    /// Another edit replaced the configuration while this one was being saved.
+    #[error("the configuration changed while it was being saved")]
+    StaleUpdate,
+
+    /// A requested action set does not exist.
+    #[error("unknown action set at index {0}")]
+    UnknownActionSet(usize),
 }

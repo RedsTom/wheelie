@@ -68,27 +68,34 @@ pub fn strip_frame<W: HasWindowHandle>(window: &W) -> Result<(), PlatformError> 
 
     // Each attribute is applied on its own: border colour and corner
     // preference only exist on Windows 11 and must not block the shadow fix.
-    results
-        .into_iter()
-        .filter_map(Result::err)
-        .map(map)
-        .next()
-        .map_or(Ok(()), Err)
+    // Only disabling the non-client rendering is essential to remove the frame.
+    let [border, corner, policy] = results;
+    for (attribute, result) in [("border colour", border), ("corner preference", corner)] {
+        if let Err(error) = result {
+            tracing::debug!(attribute, %error, "optional window attribute unavailable");
+        }
+    }
+    policy.map_err(map)
 }
 
-/// Hides the native window immediately, before gpui removes it.
+/// Hides the native window before gpui removes it.
 ///
 /// gpui dispatches active-status callbacks asynchronously. Removing a window
 /// while it is still active makes that callback update a window handle gpui has
 /// already dropped, which logs a spurious "window not found" error. Hiding the
 /// native window first delivers the deactivation while the handle is still
 /// live, so the deferred callback resolves cleanly.
+///
+/// The hide is posted with `ShowWindowAsync` rather than sent with `ShowWindow`:
+/// a synchronous hide re-activates the window behind the overlay from inside
+/// gpui's update cycle. That input callback tries to borrow `App` again and
+/// logs "RefCell already borrowed" while a wheel selection is being processed.
 #[cfg(target_os = "windows")]
 pub fn hide_window<W: HasWindowHandle>(window: &W) -> Result<(), PlatformError> {
     use raw_window_handle::RawWindowHandle;
     use std::ffi::c_void;
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindowAsync};
 
     let handle = window
         .window_handle()
@@ -99,7 +106,10 @@ pub fn hide_window<W: HasWindowHandle>(window: &W) -> Result<(), PlatformError> 
         ));
     };
     // SAFETY: `hwnd` comes from the live window handle passed by the caller.
-    let _ = unsafe { ShowWindow(HWND(win32.hwnd.get() as *mut c_void), SW_HIDE) };
+    let was_visible = unsafe { ShowWindowAsync(HWND(win32.hwnd.get() as *mut c_void), SW_HIDE) };
+    if !was_visible.as_bool() {
+        tracing::debug!("the window was already hidden when the hide command ran");
+    }
     Ok(())
 }
 

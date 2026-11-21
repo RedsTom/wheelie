@@ -6,9 +6,9 @@
 
 use crate::app::RuntimeHandle;
 use crate::core::action::{MediaCommand, MouseButton, ScrollAxis, VolumeDirection};
+use crate::core::macro_engine::MAX_SCROLL_AMOUNT;
 use crate::core::{
-    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey,
-    WheelGeometry, tr,
+    Action, ActionSet, Config, Control, KeyChord, KeyCode, Language, SetIcon, TextKey, tr,
 };
 use crate::ui::capture::{self, CaptureTarget};
 use crate::ui::controls;
@@ -451,8 +451,25 @@ fn editor(
             );
         });
 
-    // Name field with its label above, like the mockups.
-    let name_field = controls::field_input("set-name", "", set.name.as_str(), None, window, cx);
+    // Name field with its label above, like the mockups. The writer captures
+    // the set being edited, so switching rows cannot send text to the old set.
+    let name_runtime = state.runtime.clone();
+    let name_id = set.id.clone();
+    let name_field = controls::field_input(
+        controls::FieldRef::new("set-name", move |value| {
+            if value.trim().is_empty() {
+                return;
+            }
+            with_set(&name_runtime, &name_id, move |set| {
+                set.name = value.to_owned();
+            });
+        }),
+        "",
+        set.name.as_str(),
+        None,
+        window,
+        cx,
+    );
 
     // Delete stays a quiet icon button; the confirmation dialog is unchanged.
     let delete_shared = shared.clone();
@@ -841,7 +858,7 @@ fn parameters(
                     window,
                     ids.amount,
                     i64::from(amount),
-                    -100..=100,
+                    -i64::from(MAX_SCROLL_AMOUNT)..=i64::from(MAX_SCROLL_AMOUNT),
                     set.id.clone(),
                     control,
                     cx,
@@ -995,6 +1012,8 @@ fn parameters(
         Action::Launch { path } => {
             let browse_runtime = state.runtime.clone();
             let browse_id = set.id.clone();
+            let path_runtime = state.runtime.clone();
+            let path_id = set.id.clone();
             out.push(
                 param_row(
                     t,
@@ -1006,7 +1025,18 @@ fn parameters(
                         .min_w(px(0.0))
                         .gap_2()
                         .child(controls::field_input(
-                            ids.path,
+                            controls::FieldRef::new(ids.path, move |value| {
+                                with_set_action(
+                                    &path_runtime,
+                                    &path_id,
+                                    control,
+                                    move |action, _| {
+                                        if let Action::Launch { path: slot } = action {
+                                            *slot = PathBuf::from(value);
+                                        }
+                                    },
+                                );
+                            }),
                             "…",
                             path.to_string_lossy().as_ref(),
                             None,
@@ -1126,11 +1156,23 @@ fn number_editor(
     cx: &mut App,
 ) -> AnyElement {
     let delta_runtime = state.runtime.clone();
+    let field_runtime = state.runtime.clone();
+    let field_id = set_id.clone();
     let lo = *range.start();
     let hi = *range.end();
 
+    let field = controls::FieldRef::new(id, move |text| {
+        let Ok(parsed) = text.trim().parse::<i64>() else {
+            return;
+        };
+        let next = parsed.clamp(lo, hi);
+        with_set_action(&field_runtime, &field_id, control, move |action, _| {
+            set_numeric(action, next);
+        });
+    });
+
     controls::number_field(
-        id,
+        field,
         value.to_string(),
         move |delta, _, _| {
             let next = (value + delta).clamp(lo, hi);
@@ -1150,7 +1192,11 @@ pub(crate) fn set_numeric(action: &mut Action, value: i64) {
             *steps = value.clamp(1, u8::MAX as i64) as u8;
         }
         Action::Scroll { amount, .. } => {
-            *amount = value.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+            let limit = i64::from(MAX_SCROLL_AMOUNT);
+            // Zero is rejected by `Action::validate`; keep the last useful
+            // scroll amount when the editor is cleared.
+            let clamped = if value == 0 { 1 } else { value };
+            *amount = clamped.clamp(-limit, limit) as i32;
         }
         _ => {}
     }
@@ -1198,6 +1244,8 @@ fn chord_chip(
     let key_shared = shared.clone();
     let confirm_shared = shared.clone();
     let cancel_shared = shared.clone();
+    let outside_target = target.clone();
+    let outside_shared = shared.clone();
 
     let chip = div()
         .id(ids.chord_key.to_owned())
@@ -1248,6 +1296,11 @@ fn chord_chip(
         })
         .on_click(move |_, window, cx| {
             capture::start(window, cx, &key_shared, target.clone());
+        })
+        .when(capturing, |chip| {
+            chip.on_mouse_down_out(move |_, _, _| {
+                capture::abandon_if_target(&outside_shared, &outside_target);
+            })
         });
 
     div()
@@ -1649,12 +1702,12 @@ fn media_label(language: Language, command: MediaCommand) -> &'static str {
 /// Selection and reordering happen through the list, never on the wheel.
 fn preview_box(sets: &[ActionSet], selected: Option<usize>) -> impl IntoElement {
     const BOX: f32 = 300.0;
-    let geometry = WheelGeometry::from_size(BOX);
+    let geometry = wheel_paint::geometry(BOX);
     let center = point(px(BOX / 2.0), px(BOX / 2.0));
     let origin = wheel_paint::origin(center, &geometry);
     let selected_index = selected.unwrap_or(0);
     let paint_sets = sets.to_vec();
-    let title_y = BOX - 8.0;
+    let title_y = wheel_paint::title_y(center, &geometry);
 
     div()
         .id("set-preview")

@@ -27,7 +27,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut runtime = Runtime::new()?;
+    let mut runtime = Runtime::from_executable(std::env::current_exe()?)?;
     let result = ui::run(runtime.handle());
     runtime.shutdown();
     result

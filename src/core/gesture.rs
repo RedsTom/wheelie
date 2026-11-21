@@ -1,4 +1,7 @@
 //! Gesture detection for knob rotation and press.
+//!
+//! The default timings declared here are the single source of truth for both
+//! gesture detection and persisted configuration.
 
 use crate::core::key::KeyChord;
 use serde::{Deserialize, Serialize};
@@ -104,6 +107,12 @@ pub enum BindingsError {
     RightEqualsPress,
 }
 
+/// Default maximum gap between two presses, in milliseconds.
+pub const DEFAULT_DOUBLE_CLICK_MS: u64 = 350;
+
+/// Default minimum gap between two rotation steps, in milliseconds.
+pub const DEFAULT_ROTATION_DEBOUNCE_MS: u64 = 20;
+
 /// Timing settings for gesture detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GestureConfig {
@@ -116,8 +125,8 @@ pub struct GestureConfig {
 impl Default for GestureConfig {
     fn default() -> Self {
         Self {
-            double_click_ms: 350,
-            rotation_debounce_ms: 20,
+            double_click_ms: DEFAULT_DOUBLE_CLICK_MS,
+            rotation_debounce_ms: DEFAULT_ROTATION_DEBOUNCE_MS,
         }
     }
 }
@@ -331,10 +340,10 @@ mod tests {
         let events = detector.feed(InputEvent::Pressed(bindings().press), start);
         assert!(events.is_empty());
 
-        let before = start + Duration::from_millis(349);
+        let before = start + Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS - 1);
         assert!(detector.tick(before).is_empty());
 
-        let after = start + Duration::from_millis(350);
+        let after = start + Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS);
         assert_eq!(detector.tick(after), vec![GestureEvent::SinglePress]);
         assert!(detector.pending_expiry().is_none());
     }
@@ -484,5 +493,19 @@ mod tests {
             press: KeyChord::new(KeyCode::F15),
         };
         assert_eq!(bindings.control_for(chord), Some(Control::Left));
+    }
+
+    #[test]
+    fn default_timings_match_the_shared_constants() {
+        assert_eq!(DEFAULT_DOUBLE_CLICK_MS, 350);
+        assert_eq!(DEFAULT_ROTATION_DEBOUNCE_MS, 20);
+        assert_eq!(
+            GestureConfig::default().double_click_ms,
+            DEFAULT_DOUBLE_CLICK_MS
+        );
+        assert_eq!(
+            GestureConfig::default().rotation_debounce_ms,
+            DEFAULT_ROTATION_DEBOUNCE_MS
+        );
     }
 }

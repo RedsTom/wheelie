@@ -1,32 +1,28 @@
 //! Startup release notice: a modal that announces a newer published version
 //! and directs the user to the GitHub page for that release.
 
-use crate::core::{Language, Release, TextKey, tr};
+use crate::core::{APP_NAME, Language, Release, TextKey, tr};
 use crate::ui::controls;
 use crate::ui::shell::{SettingsView, Shared};
 use crate::ui::style::{self, Tokens};
 use gpui::prelude::*;
-use gpui::{AnyElement, App, ClickEvent, Entity, Hsla, Rgba, SharedString, Window, div, px};
+use gpui::{AnyElement, App, Entity, FocusHandle, KeyDownEvent, Role, SharedString, div, px};
 
 /// Backdrop and card announcing `release`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn modal(
     release: &Release,
     t: Tokens,
     language: Language,
     shared: &Shared,
     view: &Entity<SettingsView>,
+    focus: &FocusHandle,
 ) -> AnyElement {
-    let tag = format!("Wheelie {}", release.tag);
+    let tag = format!("{} {}", APP_NAME, release.tag);
     let title = tr(language, TextKey::UpdateAvailableTitle);
     let body = tr(language, TextKey::UpdateAvailableBody);
-
-    let overlay: Hsla = Rgba {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 0.45,
-    }
-    .into();
+    let dismiss = dismiss_handler(shared, view);
+    let escape_dismiss = dismiss.clone();
 
     div()
         .id("update-modal")
@@ -37,7 +33,16 @@ pub(crate) fn modal(
         .flex()
         .items_center()
         .justify_center()
-        .bg(overlay)
+        .bg(style::MODAL_SCRIM)
+        .focusable()
+        .track_focus(focus)
+        .on_key_down(move |event: &KeyDownEvent, _, cx| {
+            if event.keystroke.key.eq_ignore_ascii_case("escape") {
+                cx.stop_propagation();
+                escape_dismiss(cx);
+            }
+        })
+        .on_click(|_, _, cx| cx.stop_propagation())
         .child(
             div()
                 .id("update-card")
@@ -51,6 +56,9 @@ pub(crate) fn modal(
                 .bg(t.card)
                 .px_6()
                 .py_5()
+                .role(Role::Dialog)
+                .aria_label(title)
+                .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()
                         .flex()
@@ -84,7 +92,7 @@ pub(crate) fn modal(
                         .gap_2()
                         .child(open_button(release, shared, view, language))
                         .child(ignore_button(release, t, shared, view, language))
-                        .child(later_button(t, shared, view, language)),
+                        .child(later_button(t, language, dismiss)),
                 ),
         )
         .into_any_element()
@@ -145,24 +153,32 @@ fn ignore_button(
     .into_any_element()
 }
 
-/// Plain "later" affordance: dismisses the notice for this run only.
+/// Dismisses the notice for this run only.
 fn later_button(
     t: Tokens,
-    shared: &Shared,
-    view: &Entity<SettingsView>,
     language: Language,
+    dismiss: impl Fn(&mut App) + Clone + 'static,
 ) -> AnyElement {
-    let dismiss = dismiss_handler(shared, view);
-    div()
-        .id("update-later")
-        .cursor_pointer()
-        .px_2()
-        .py(px(5.0))
-        .rounded(px(style::RADIUS_CONTROL))
-        .text_size(px(12.5))
-        .text_color(t.muted)
-        .hover(|node| node.bg(t.card_hover))
-        .child(tr(language, TextKey::UpdateLaterAction))
-        .on_click(move |_: &ClickEvent, _: &mut Window, cx| dismiss(cx))
-        .into_any_element()
+    controls::secondary_button(
+        t,
+        tr(language, TextKey::UpdateLaterAction),
+        move |_, _, cx| {
+            dismiss(cx);
+        },
+    )
+    .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The notice only uses the translated label and the published tag; no
+    /// developer vocabulary or hand-written prose reaches the modal.
+    #[test]
+    fn notice_tag_is_built_from_app_name_and_release_tag() {
+        let release = Release::new("v0.4.2", "https://example.invalid/v0.4.2");
+        let tag = format!("{} {}", APP_NAME, release.tag);
+        assert_eq!(tag, "Wheelie v0.4.2");
+    }
 }

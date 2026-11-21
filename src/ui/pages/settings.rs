@@ -192,15 +192,8 @@ fn preferences_card(
                 tr(language, TextKey::StartAtLoginDescription),
                 controls::toggle("autostart", start_at_login, move |_checked, _, _| {
                     let enabled = !start_at_login;
-                    match login_runtime.set_start_at_login(enabled) {
-                        Ok(()) => {
-                            if let Err(error) = login_runtime.update_config(|config| {
-                                config.general.start_at_login = enabled;
-                            }) {
-                                login_runtime.report_error(error.to_string());
-                            }
-                        }
-                        Err(error) => login_runtime.report_error(error.to_string()),
+                    if let Err(error) = login_runtime.set_start_at_login(enabled) {
+                        login_runtime.report_error(error.to_string());
                     }
                 }),
             ))
@@ -256,6 +249,7 @@ fn about_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
                             .child(div().mt(px(6.0)).child(controls::status_pill(
                                 tr(language, TextKey::FreeSoftware),
                                 style::ACCENT,
+                                state.preferences.theme_mode,
                             ))),
                     ),
             )
@@ -271,7 +265,7 @@ fn about_card(state: &ShellState, t: Tokens, language: Language) -> impl IntoEle
             .child(info_row(
                 t,
                 tr(language, TextKey::LicenseLabel),
-                "GPL-3.0-only",
+                style::APP_LICENSE,
             ))
             .child(info_row(
                 t,
@@ -295,12 +289,11 @@ fn platform_card(state: &ShellState, t: Tokens, language: Language) -> impl Into
                 tr(language, TextKey::PlatformCardTitle),
                 None,
             ))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .child(controls::status_pill(state.platform.os, style::ACCENT)),
-            )
+            .child(div().flex().flex_row().child(controls::status_pill(
+                state.platform.os,
+                style::ACCENT,
+                state.preferences.theme_mode,
+            )))
             .child(div().when_some(
                 platform_notice_text(language, state.platform),
                 |div, notice| div.child(super::warning(notice)),

@@ -7,11 +7,10 @@
 //! of the primary display that never takes focus and closes itself after the
 //! indicator's display duration.
 
-use crate::app::Indicator;
+use crate::app::{CoverImageFormat, CoverView, Indicator, MEDIA_DISPLAY_DURATION, PlayingView};
 use crate::core::{APP_ID, SetIcon};
-use crate::platform::media_session::{CoverFormat, NowPlaying};
 use crate::platform::window_frame;
-use crate::ui::shell::Shared;
+use crate::ui::shell::{Shared, WINDOW_OPEN_RETRY};
 use crate::ui::{iconset, style};
 use gpui::prelude::*;
 use gpui::{
@@ -41,10 +40,6 @@ const COVER_SIZE: f32 = MEDIA_HEIGHT - 2.0 * PADDING_VERTICAL;
 
 /// How long a level indicator stays on screen after the last change.
 pub const DISPLAY_DURATION: Duration = Duration::from_millis(1500);
-/// How long a now-playing card stays on screen: enough to read the track
-/// and watch the position advance.
-pub const MEDIA_DISPLAY_DURATION: Duration = Duration::from_millis(5000);
-
 /// Indicator shown and the moment it disappears.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Osd {
@@ -128,9 +123,15 @@ fn bounds(media: bool, cx: &App) -> Bounds<gpui::Pixels> {
 
 /// Opens the indicator window sized for `media`, unless it is already open.
 fn open(shared: &Shared, media: bool, cx: &mut App) {
-    if shared.borrow().osd_window.is_some() {
+    let state = shared.borrow();
+    if state.osd_window.is_some()
+        || state
+            .osd_open_retry_at
+            .is_some_and(|at| at.elapsed() < WINDOW_OPEN_RETRY)
+    {
         return;
     }
+    drop(state);
 
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds(media, cx))),
@@ -147,26 +148,32 @@ fn open(shared: &Shared, media: bool, cx: &mut App) {
     };
 
     let view_shared = shared.clone();
-    let handle = cx
-        .open_window(options, move |window, cx| {
-            if let Err(error) = window_frame::strip_frame(&*window) {
-                tracing::warn!(%error, "could not remove the indicator frame");
-            }
-            cx.new(move |_: &mut Context<OsdView>| OsdView {
-                shared: view_shared.clone(),
-                cover: None,
-            })
+    match cx.open_window(options, move |window, cx| {
+        if let Err(error) = window_frame::strip_frame(&*window) {
+            tracing::warn!(%error, "could not remove the indicator frame");
+        }
+        cx.new(move |_: &mut Context<OsdView>| OsdView {
+            shared: view_shared.clone(),
+            cover: None,
         })
-        .expect("open indicator window");
-
-    let mut state = shared.borrow_mut();
-    state.osd_window = Some(handle);
-    state.osd_window_media = media;
+    }) {
+        Ok(handle) => {
+            let mut state = shared.borrow_mut();
+            state.osd_window = Some(handle);
+            state.osd_window_media = media;
+            state.osd_open_retry_at = None;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "indicator window unavailable; retrying later");
+            shared.borrow_mut().osd_open_retry_at = Some(Instant::now());
+        }
+    }
 }
 
 /// Closes the indicator window if open.
 fn close(shared: &Shared, cx: &mut App) {
     let handle = shared.borrow_mut().osd_window.take();
+    shared.borrow_mut().osd_open_retry_at = None;
     shared.borrow_mut().osd_window_media = false;
     if let Some(handle) = handle {
         let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -218,27 +225,28 @@ pub struct OsdView {
     /// Shared shell state (current indicator and theme).
     pub shared: Shared,
     /// Cover texture of the last shown track, reused across frames so the
-    /// bytes are decoded once per track. Keyed by `"title\nartist"`.
-    cover: Option<(String, Option<Arc<Image>>)>,
+    /// bytes are decoded once per track. Keyed by the full track view (title,
+    /// artist, timing and cover bytes) so a different session with the same
+    /// title cannot borrow the previous session's artwork.
+    cover: Option<(PlayingView, Option<Arc<Image>>)>,
 }
 
 /// Texture for the cover of `track`, rebuilt into `cache` when the track
 /// changes.
 fn cover_texture(
-    cache: &mut Option<(String, Option<Arc<Image>>)>,
-    track: &NowPlaying,
+    cache: &mut Option<(PlayingView, Option<Arc<Image>>)>,
+    track: &PlayingView,
 ) -> Option<Arc<Image>> {
-    let key = format!("{}\n{}", track.title, track.artist);
-    let fresh = cache.as_ref().is_none_or(|(cached, _)| *cached != key);
+    let fresh = cache.as_ref().is_none_or(|(cached, _)| cached != track);
     if fresh {
-        let image = track.cover.as_ref().map(|cover| {
+        let image = track.cover.as_ref().map(|cover: &CoverView| {
             let format = match cover.format {
-                CoverFormat::Png => ImageFormat::Png,
-                CoverFormat::Jpeg => ImageFormat::Jpeg,
+                CoverImageFormat::Png => ImageFormat::Png,
+                CoverImageFormat::Jpeg => ImageFormat::Jpeg,
             };
             Arc::new(Image::from_bytes(format, cover.bytes.clone()))
         });
-        *cache = Some((key, image));
+        *cache = Some((track.clone(), image));
     }
     cache
         .as_ref()
@@ -317,8 +325,8 @@ fn level_card(indicator: Option<&Indicator>, t: &style::Tokens) -> AnyElement {
 /// bar and the elapsed time move while the card is on screen without
 /// re-querying the player from the UI thread.
 fn media_card(
-    cache: &mut Option<(String, Option<Arc<Image>>)>,
-    track: &NowPlaying,
+    cache: &mut Option<(PlayingView, Option<Arc<Image>>)>,
+    track: &PlayingView,
     since_sample: Duration,
     t: &style::Tokens,
 ) -> AnyElement {
@@ -402,7 +410,7 @@ fn media_card(
 /// Position to draw for `track` when `since_sample` has elapsed since the
 /// session read: playing advances on the local clock, paused holds, and the
 /// result never passes the end of the track.
-fn shown_position(track: &NowPlaying, since_sample: Duration) -> u64 {
+fn shown_position(track: &PlayingView, since_sample: Duration) -> u64 {
     if !track.playing {
         return track.position_ms;
     }
@@ -415,7 +423,7 @@ fn shown_position(track: &NowPlaying, since_sample: Duration) -> u64 {
 }
 
 /// Elapsed, bar and total length of the track, as one compact row.
-fn progress_row(track: &NowPlaying, shown_ms: u64, t: &style::Tokens) -> AnyElement {
+fn progress_row(track: &PlayingView, shown_ms: u64, t: &style::Tokens) -> AnyElement {
     let fraction = if track.duration_ms == 0 {
         0.0
     } else {
@@ -464,11 +472,22 @@ fn clock(milliseconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::volume::Level;
+    use crate::app::VolumeView;
+
+    fn track() -> PlayingView {
+        PlayingView {
+            title: "Nightcall".to_owned(),
+            artist: "Kavinsky".to_owned(),
+            cover: None,
+            playing: true,
+            position_ms: 12_000,
+            duration_ms: 240_000,
+        }
+    }
 
     #[test]
     fn muted_volume_keeps_the_percentage() {
-        let display = indicator_display(Some(&Indicator::Volume(Level {
+        let display = indicator_display(Some(&Indicator::Volume(VolumeView {
             percent: 42,
             muted: true,
         })));
@@ -480,7 +499,7 @@ mod tests {
 
     #[test]
     fn unmuted_volume_uses_the_normal_icon() {
-        let display = indicator_display(Some(&Indicator::Volume(Level {
+        let display = indicator_display(Some(&Indicator::Volume(VolumeView {
             percent: 75,
             muted: false,
         })));
@@ -501,19 +520,23 @@ mod tests {
 
     #[test]
     fn media_indicators_stay_longer_than_levels() {
-        let track = Indicator::Media(NowPlaying {
-            title: "Nightcall".to_owned(),
-            artist: "Kavinsky".to_owned(),
-            position_ms: 12_000,
-            duration_ms: 240_000,
-            ..Default::default()
-        });
-        let volume = Indicator::Volume(Level {
+        let track = Indicator::Media(track());
+        let volume = Indicator::Volume(VolumeView {
             percent: 30,
             muted: false,
         });
 
         assert!(Osd::new(track).until > Osd::new(volume).until);
+    }
+
+    /// The cache key includes the whole track view, so a new session with the
+    /// same title and artist cannot reuse another session's cover.
+    #[test]
+    fn cover_cache_key_includes_session_state() {
+        let first = track();
+        let mut second = track();
+        second.position_ms += 1;
+        assert_ne!(first, second);
     }
 
     #[test]
@@ -525,11 +548,11 @@ mod tests {
 
     #[test]
     fn a_playing_track_advances_with_the_local_clock() {
-        let track = NowPlaying {
+        let track = PlayingView {
             position_ms: 10_000,
             duration_ms: 60_000,
             playing: true,
-            ..Default::default()
+            ..track()
         };
 
         assert_eq!(shown_position(&track, Duration::from_millis(5_000)), 15_000);
@@ -538,11 +561,11 @@ mod tests {
 
     #[test]
     fn a_paused_track_holds_its_position() {
-        let track = NowPlaying {
+        let track = PlayingView {
             position_ms: 10_000,
             duration_ms: 60_000,
             playing: false,
-            ..Default::default()
+            ..track()
         };
 
         assert_eq!(shown_position(&track, Duration::from_secs(1)), 10_000);
@@ -550,11 +573,11 @@ mod tests {
 
     #[test]
     fn only_media_indicators_widen_the_window() {
-        let volume = Osd::new(Indicator::Volume(Level {
+        let volume = Osd::new(Indicator::Volume(VolumeView {
             percent: 30,
             muted: false,
         }));
-        let track = Osd::new(Indicator::Media(NowPlaying::default()));
+        let track = Osd::new(Indicator::Media(track()));
 
         assert!(!volume.is_media());
         assert!(track.is_media());
