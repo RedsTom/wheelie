@@ -123,7 +123,7 @@ jobs:
           Remove-Item -Recurse -Force dist\portable
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: win-x64
           path: dist/*
@@ -163,7 +163,7 @@ jobs:
           VERSION="$VERSION" BIN=dist/universal/wheelie OUT_DIR=dist bash packaging/macos/make-app.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-universal
           # Only the shipped archives: a bare dist/* would recurse into
@@ -208,7 +208,7 @@ jobs:
           bash packaging/linux/make-portable.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-x64
           path: dist/*
