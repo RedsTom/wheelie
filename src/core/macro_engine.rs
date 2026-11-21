@@ -227,7 +227,7 @@ pub trait MacroSink {
 /// Steps are validated before anything is injected. Every chord still held at
 /// the end is released, whether replay finished, was cancelled or failed in the
 /// sink, so a key is never left stuck down.
-pub fn run_macro<S: MacroSink>(
+pub fn run_macro<S: MacroSink + ?Sized>(
     sink: &mut S,
     steps: &[MacroStep],
     cancel: &AtomicBool,
@@ -256,7 +256,7 @@ pub fn run_macro<S: MacroSink>(
     }
 }
 
-fn replay<S: MacroSink>(
+fn replay<S: MacroSink + ?Sized>(
     steps: &[MacroStep],
     sink: &mut S,
     cancel: &AtomicBool,
