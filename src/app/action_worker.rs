@@ -18,9 +18,11 @@ use crate::core::macro_engine::{
     MAX_TOTAL_DELAY_MS, MacroDefinition, MacroError, MacroSink, MacroStep, run_macro,
 };
 use crate::core::{Config, InputEvent, TextKey, tr};
+#[cfg(not(test))]
+use crate::platform::EnigoInputSink;
 use crate::platform::media_session;
 use crate::platform::volume;
-use crate::platform::{EnigoInputSink, InjectionGuard, InputSink, PlatformError};
+use crate::platform::{InjectionGuard, InputSink, PlatformError};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -288,6 +290,25 @@ impl ActionQueue {
     }
 }
 
+/// Combined sink used by the worker for direct actions and macros.
+trait ActionSink: InputSink + MacroSink {}
+impl<T> ActionSink for T where T: InputSink + MacroSink {}
+
+/// Factory for the worker's sink. Unit tests record calls instead of needing
+/// a real display or input device; production always uses [`EnigoInputSink`].
+type SinkFactory = Arc<dyn Fn() -> Result<Box<dyn ActionSink>, PlatformError> + Send + Sync>;
+
+#[cfg(test)]
+fn sink_factory() -> SinkFactory {
+    use crate::platform::mock::MockInputSink;
+    Arc::new(|| Ok(Box::new(MockInputSink::default()) as Box<dyn ActionSink>))
+}
+
+#[cfg(not(test))]
+fn sink_factory() -> SinkFactory {
+    Arc::new(|| EnigoInputSink::new().map(|sink| Box::new(sink) as Box<dyn ActionSink>))
+}
+
 /// Spawns the action worker and returns its queue and join handle.
 pub fn spawn(
     config: Arc<RwLock<Config>>,
@@ -307,9 +328,10 @@ pub fn spawn(
         tracker: InjectionTracker::default(),
     };
     let run_queue = queue.clone();
+    let run_factory = sink_factory();
     let worker = thread::Builder::new()
         .name("wheelie-actions".to_owned())
-        .spawn(move || run(&receiver, &config, &guard, &run_queue))?;
+        .spawn(move || run(&receiver, &config, &guard, &run_queue, &run_factory))?;
     Ok((queue, worker))
 }
 
@@ -318,8 +340,9 @@ fn run(
     config: &Arc<RwLock<Config>>,
     guard: &InjectionGuard,
     queue: &ActionQueue,
+    sink_factory: &SinkFactory,
 ) {
-    let mut sink = match EnigoInputSink::new() {
+    let mut sink = match sink_factory() {
         Ok(sink) => sink,
         Err(error) => {
             error!(%error, "could not create the input sink");
@@ -361,6 +384,7 @@ fn run(
                             &queue.events,
                             &queue.workers,
                             &queue.stopping,
+                            sink_factory,
                         ),
                         None => {
                             let error = ActionError::UnknownMacro(name.clone());
@@ -374,7 +398,7 @@ fn run(
 
                 let executed = {
                     let _scope = guard.scope();
-                    execute_action_inner(&mut sink, &macros, &action, &active_cancel)
+                    execute_action_inner(&mut *sink, &macros, &action, &active_cancel)
                 };
                 // Drain one more time while the scope is still meaningful: an
                 // injected release may already be waiting in the channel.
@@ -437,7 +461,7 @@ pub fn execute_action<S>(
     cancel: &AtomicBool,
 ) -> Result<Option<u8>, ActionError>
 where
-    S: InputSink + MacroSink,
+    S: InputSink + MacroSink + ?Sized,
 {
     let _scope = guard.scope();
     execute_action_inner(sink, macros, action, cancel)
@@ -450,7 +474,7 @@ fn execute_action_inner<S>(
     cancel: &AtomicBool,
 ) -> Result<Option<u8>, ActionError>
 where
-    S: InputSink + MacroSink,
+    S: InputSink + MacroSink + ?Sized,
 {
     match action {
         Action::None => Ok(None),
@@ -508,6 +532,7 @@ fn spawn_macro(
     events: &Sender<AppEvent>,
     workers: &WorkerRegistry,
     stopping: &Arc<AtomicBool>,
+    sink_factory: &SinkFactory,
 ) {
     if stopping.load(Ordering::SeqCst) {
         return;
@@ -517,14 +542,15 @@ fn spawn_macro(
     let thread_cancel = Arc::clone(cancel);
     let worker_cancel = Arc::clone(cancel);
     let thread_events = events.clone();
+    let thread_factory = Arc::clone(sink_factory);
 
     let handle = thread::Builder::new()
         .name("wheelie-macro".to_owned())
         .spawn(move || {
             let _scope = thread_guard.scope();
-            let result = match EnigoInputSink::new() {
+            let result = match thread_factory() {
                 Ok(mut sink) => run_macro_bounded(
-                    &mut sink,
+                    &mut *sink,
                     &definition.steps,
                     &thread_cancel,
                     Instant::now() + MAX_MACRO_DURATION,
@@ -548,7 +574,7 @@ fn spawn_macro(
 /// The core runner already checks the cancellation flag; this variant also
 /// caps each wait at the remaining budget, so a slow sink cannot outlive the
 /// macro's allowed duration.
-fn run_macro_bounded<S: MacroSink>(
+fn run_macro_bounded<S: MacroSink + ?Sized>(
     sink: &mut S,
     steps: &[MacroStep],
     cancel: &AtomicBool,

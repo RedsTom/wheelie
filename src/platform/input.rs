@@ -358,10 +358,10 @@ fn launch_unix(path: &Path) -> Result<(), PlatformError> {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("desktop"))
     {
         let text = path.to_string_lossy();
-        if let Ok(status) = Command::new("gio").args(["launch", text.as_ref()]).status() {
-            if status.success() {
-                return Ok(());
-            }
+        if let Ok(status) = Command::new("gio").args(["launch", text.as_ref()]).status()
+            && status.success()
+        {
+            return Ok(());
         }
         let status = Command::new("xdg-open").arg(path).status()?;
         if !status.success() {

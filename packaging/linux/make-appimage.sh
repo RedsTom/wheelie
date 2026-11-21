@@ -2,7 +2,7 @@
 # Builds an x86_64 AppImage for Wheelie from the release binary.
 #
 # Required environment:
-#   VERSION   release version, e.g. 0.4.1-beta.1
+#   VERSION   release version, e.g. 0.4.2-beta.1
 #   BIN       path to the release `wheelie` binary
 #   OUT_DIR   output directory for the artifact
 #

@@ -99,7 +99,7 @@ mod imp {
             VolumeDirection::Up => "+",
             VolumeDirection::Down => "-",
         };
-        format!("{}{sign}", u32::from(STEP_PERCENT) * u32::from(steps))
+        format!("{}%{sign}", u32::from(STEP_PERCENT) * u32::from(steps))
     }
 
     /// Changes the brightness with `brightnessctl`, which handles the

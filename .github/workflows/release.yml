@@ -70,9 +70,11 @@ jobs:
           fi
 
           safe_version="$(printf '%s' "$version" | tr '-' '~')"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "safe_version=$safe_version" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "safe_version=$safe_version"
+          } >> "$GITHUB_OUTPUT"
 
   windows:
     name: Windows x64
